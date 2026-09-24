@@ -39,7 +39,7 @@ function buildSky(THREE, layout) {
   return new THREE.Mesh(new THREE.SphereGeometry(1800, 36, 20), mat);
 }
 
-/** 地形：顶点色 + flatShading，贴赛道起伏 */
+/** 地形：顶点色 + PBR 平滑着色，贴赛道起伏（地面是大面积视觉主体，平滑+微粗糙最出质感） */
 function buildTerrain(THREE, track, layout) {
   // 尺寸随赛道包围盒缩放，保证能盖住整条赛道
   const b = track.bounds;
@@ -66,8 +66,8 @@ function buildTerrain(THREE, track, layout) {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
-    vertexColors: true, flatShading: true,
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.95, metalness: 0.02,
   }));
   mesh.receiveShadow = true;
   return mesh;
@@ -94,7 +94,7 @@ function buildMountains(THREE, layout, rng) {
     geo.computeVertexNormals();
   }
   const mesh = new THREE.InstancedMesh(
-    geo, new THREE.MeshLambertMaterial({ flatShading: true }), cfg.count
+    geo, new THREE.MeshStandardMaterial({ flatShading: true, roughness: 1, metalness: 0 }), cfg.count
   );
   const m = new THREE.Matrix4(), q = new THREE.Quaternion();
   const pos = new THREE.Vector3(), scl = new THREE.Vector3();
@@ -116,14 +116,17 @@ function buildMountains(THREE, layout, rng) {
   return mesh;
 }
 
-/** 程序化建筑立面：墙面 + 玻璃窗格（diffuse），部分亮窗（emissive）。零外链贴图 */
+/** 程序化建筑立面：墙面 + 玻璃窗格（diffuse），部分亮窗（emissive）+ 粗糙度贴图。
+ *  粗糙度贴图让玻璃窗低粗糙（反光）、墙体高粗糙（哑光），配合环境贴图夜景楼群玻璃会反光。 */
 function makeBuildingTextures(THREE) {
   const W = 128, H = 256, COLS = 6, ROWS = 14;
   const cd = document.createElement('canvas'); cd.width = W; cd.height = H;
   const ce = document.createElement('canvas'); ce.width = W; ce.height = H;
-  const dd = cd.getContext('2d'), de = ce.getContext('2d');
+  const cr = document.createElement('canvas'); cr.width = W; cr.height = H;
+  const dd = cd.getContext('2d'), de = ce.getContext('2d'), dr = cr.getContext('2d');
   dd.fillStyle = '#d8d8dc'; dd.fillRect(0, 0, W, H);   // 白墙基色，实例色再乘
   de.fillStyle = '#000'; de.fillRect(0, 0, W, H);
+  dr.fillStyle = '#d8d8d8'; dr.fillRect(0, 0, W, H);   // 墙体：高粗糙（哑光）
   const cw = W / COLS, rh = H / ROWS;
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -133,6 +136,7 @@ function makeBuildingTextures(THREE) {
       const g = 118 + Math.floor(Math.sin(r * 7.3 + c * 11.1) * 26);
       dd.fillStyle = `rgb(${g - 30},${g},${g + 18})`;
       dd.fillRect(x, y, w, h);
+      dr.fillStyle = '#2a2a30'; dr.fillRect(x, y, w, h);   // 玻璃：低粗糙（反光）
       if (Math.sin(r * 13.7 + c * 5.9) > 0.62) {        // ~1/4 窗亮灯
         de.fillStyle = Math.sin(r * 3.1 + c) > 0 ? '#ffd9a0' : '#ffb46a';
         de.fillRect(x, y, w, h);
@@ -142,7 +146,50 @@ function makeBuildingTextures(THREE) {
   const map = new THREE.CanvasTexture(cd);
   map.colorSpace = THREE.SRGBColorSpace;
   const lit = new THREE.CanvasTexture(ce);
-  return [map, lit];
+  const rough = new THREE.CanvasTexture(cr);   // 数据贴图，保持线性
+  return [map, lit, rough];
+}
+
+/** 程序化环境贴图（IBL）：画一张 equirectangular 天空渐变 + 地面 + 太阳光斑，
+ *  经 PMREMGenerator 预滤波后作为 scene.environment，让所有 PBR 材质获得真实反射。
+ *  零外链贴图、零 HDR 文件，一次生成随赛道色板变化。 */
+function makeEnvironment(THREE, renderer, layout) {
+  const W = 256, H = 128;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const skyTop = new THREE.Color(layout.sky.top);
+  const skyMid = new THREE.Color(layout.sky.mid);
+  const skyBot = new THREE.Color(layout.sky.bot);
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#' + skyTop.getHexString());
+  grad.addColorStop(0.55, '#' + skyMid.getHexString());
+  grad.addColorStop(1, '#' + skyBot.getHexString());
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  // 地面（下 1/4）：用半球地面色模拟地面对光的反弹
+  ctx.fillStyle = '#' + new THREE.Color(layout.hemi.ground).getHexString();
+  ctx.fillRect(0, H * 0.74, W, H * 0.26);
+  // 太阳光斑：把太阳方向投影到球面，形成高光反射源
+  const sunDir = new THREE.Vector3(...layout.sun.dir).normalize();
+  const u = 0.5 + Math.atan2(sunDir.x, sunDir.z) / (2 * Math.PI);
+  const v = 0.5 - Math.asin(clamp(sunDir.y, -1, 1)) / Math.PI;
+  const sx = u * W, sy = v * H;
+  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, W * 0.2);
+  glow.addColorStop(0, 'rgba(255,246,220,1)');
+  glow.addColorStop(0.12, 'rgba(255,220,160,0.55)');
+  glow.addColorStop(0.45, 'rgba(255,200,120,0.14)');
+  glow.addColorStop(1, 'rgba(255,200,120,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const env = pmrem.fromEquirectangular(tex);
+  tex.dispose();
+  pmrem.dispose();
+  return env.texture;
 }
 
 /** 植被与建筑：沿赛道法向带状生成 + 回头校验净距（大平面随机撒点命中率太低） */
@@ -191,11 +238,11 @@ function buildScatter(THREE, track, layout, rng) {
     blobGeo.computeVertexNormals();
   }
   const trunkMesh = new THREE.InstancedMesh(trunkGeo,
-    new THREE.MeshLambertMaterial({ color: 0x5a4634, flatShading: true }), trees.length);
+    new THREE.MeshStandardMaterial({ color: 0x5a4634, roughness: 0.9, metalness: 0 }), trees.length);
   const coneMesh = new THREE.InstancedMesh(coneGeo,
-    new THREE.MeshLambertMaterial({ flatShading: true }), trees.length * 3);
+    new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0 }), trees.length * 3);
   const blobMesh = new THREE.InstancedMesh(blobGeo,
-    new THREE.MeshLambertMaterial({ flatShading: true }), trees.length * 3);
+    new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 }), trees.length * 3);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion();
   const pos = new THREE.Vector3(), scl = new THREE.Vector3(), col = new THREE.Color();
   const axis = new THREE.Vector3(0, 1, 0);
@@ -253,11 +300,12 @@ function buildScatter(THREE, track, layout, rng) {
   const bCfg = layout.building;
   const bGeo = new THREE.BoxGeometry(1, 1, 1);
   bGeo.translate(0, 0.5, 0);
-  const [wallTex, litTex] = makeBuildingTextures(THREE);
-  const wallMat = new THREE.MeshLambertMaterial({
-    map: wallTex, emissive: 0xffffff, emissiveMap: litTex, emissiveIntensity: 0.85,
+  const [wallTex, litTex, roughTex] = makeBuildingTextures(THREE);
+  const wallMat = new THREE.MeshStandardMaterial({
+    map: wallTex, roughnessMap: roughTex, roughness: 0.85, metalness: 0.15,
+    emissive: 0xffffff, emissiveMap: litTex, emissiveIntensity: 0.85,
   });
-  const roofMat = new THREE.MeshLambertMaterial({ color: 0x3c4048, flatShading: true });
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x3c4048, roughness: 0.9, metalness: 0.05 });
   // BoxGeometry 材质组顺序：+x, -x, +y(顶), -y(底), +z, -z
   const bMesh = new THREE.InstancedMesh(bGeo,
     [wallMat, wallMat, roofMat, roofMat, wallMat, wallMat], builds.length * 4);
@@ -323,6 +371,11 @@ export function buildWorld(THREE, scene, track, renderer) {
   created.push(sky);
   scene.fog = new THREE.Fog(layout.fog.color, layout.fog.near, layout.fog.far);
 
+  /* --- 环境贴图（IBL）：PBR 反射的光源来源，随赛道色板重建 --- */
+  scene.environment = makeEnvironment(THREE, renderer, layout);
+  scene.environmentIntensity = 0.5;
+  if (typeof window !== 'undefined') window.__DR_SCENE__ = scene;   // 验收/调试钩子
+
   /* --- 地形 / 远山 / 植被 --- */
   const terrain = buildTerrain(THREE, track, layout);
   const mountains = buildMountains(THREE, layout, rng);
@@ -341,10 +394,13 @@ export function buildWorld(THREE, scene, track, renderer) {
         const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
         for (const mat of mats) {
           if (mat.map) mat.map.dispose();
+          if (mat.emissiveMap) mat.emissiveMap.dispose();
+          if (mat.roughnessMap) mat.roughnessMap.dispose();
           mat.dispose();
         }
       });
       scene.fog = null;
+      if (scene.environment) { scene.environment.dispose(); scene.environment = null; }
     },
   };
 }
