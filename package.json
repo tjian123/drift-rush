@@ -10,7 +10,8 @@
     "verify": "node tools/verify.mjs A B C D",
     "verify:mobile": "node tools/verify-mobile.mjs",
     "verify:cloud": "node tools/verify-cloud.mjs",
-    "verify:signup": "node tools/verify-signup.mjs"
+    "verify:signup": "node tools/verify-signup.mjs",
+    "verify:menubg": "node tools/verify-menu-bg.mjs"
   },
   "notes": {
     "verify:signup": "真实账号闭环。DR_PHASE=signup（默认）走邮箱验证码注册；DR_PHASE=login 用已注册账号密码登录，免验证码复跑成绩上传/上榜环节（零依赖，环境变量请直接在 shell 里设置）"

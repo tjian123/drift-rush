@@ -170,6 +170,14 @@ canvas { display: block; }
   background: radial-gradient(ellipse 62% 62% at 50% 50%, rgba(12,16,30,.72), rgba(5,7,14,.95));
   backdrop-filter: blur(4px); padding: 24px; }
 .screen.hide { display: none; }
+/* 菜单屏透出 3D 场景（动态背景）：顶部近全透，向下渐暗保证文字可读；
+   整屏 backdrop blur 会把场景糊掉，菜单单独关掉 —— 控件自身有 --panel 底色 */
+#screen-menu {
+  background: linear-gradient(180deg,
+    rgba(6, 9, 18, .14) 0%, rgba(6, 9, 18, .28) 40%,
+    rgba(5, 7, 14, .62) 74%, rgba(5, 7, 14, .84) 100%);
+  backdrop-filter: none;
+}
 
 .logo { font-size: clamp(38px, 8.4vw, 86px); font-weight: 900; letter-spacing: -4px;
   line-height: .92; text-align: center;

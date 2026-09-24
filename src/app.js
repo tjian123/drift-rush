@@ -121,12 +121,15 @@ const net = new NetClient();
 /* ------------------------------------------------------------------ UI */
 const ui = new UI({
   onPrefs(s) {
+    const trackChanged = prefs.track !== s.track;
     const changed =
-      prefs.mode !== s.mode || prefs.track !== s.track || prefs.level !== s.level ||
+      prefs.mode !== s.mode || trackChanged || prefs.level !== s.level ||
       prefs.laps !== s.laps || prefs.name !== s.name || prefs.paint !== s.paint;
     Object.assign(prefs, s);
     saveKey('dr-mode', s.mode); saveKey('dr-track', s.track); saveKey('dr-level', s.level);
     saveKey('dr-laps', s.laps); saveKey('dr-name', s.name); saveKey('dr-paint', s.paint);
+    // 菜单动态背景实时跟随所选赛道：点卡片即换景（重建世界与演示车）
+    if (trackChanged && game.phase === 'menu') { ensureWorld(s.track); ensureAttract(); }
     if (changed) audio.chime('click');
     ui.renderMenuFoot(prefs.bests, ach);
   },
@@ -330,6 +333,98 @@ function ensureWorld(trackId) {
   skid.clear();
   smoke.clear();
   return track;
+}
+
+/* ==========================================================================
+ * 菜单动态背景（attract mode）
+ *
+ * 菜单不再是静态底图：当前所选赛道的世界常驻渲染，3 台 AI 演示车沿赛道
+ * 巡航，相机在「追尾 / 航拍 / 环绕」三种机位间轮换。离开菜单（开局、进
+ * 大厅）自动清理，回到菜单（含换赛道）自动重建 —— 状态完全由主循环托管。
+ * =========================================================================*/
+const attract = {
+  on: false, trackId: null, racers: [], drivers: new Map(),
+  acc: 0, shot: 0, shotAt: 0, leader: null,
+};
+const ATTRACT_SHOT_MS = 8500;
+const ATTRACT_SHOTS = [0, 3, 2];        // 追尾 → 航拍 → 环绕
+const ATTRACT_CTX = {
+  track: null,
+  onWall: () => { }, onDriftBank: () => { }, onContact: () => { },
+};
+
+function disposeAttract() {
+  for (const r of attract.racers) detachMesh(r);
+  attract.racers = [];
+  attract.drivers.clear();
+  attract.on = false;
+  attract.leader = null;
+}
+
+function ensureAttract() {
+  if (game.phase !== 'menu') return;
+  if (attract.on && attract.trackId === game.trackId) return;
+  disposeAttract();
+  const T = game.track;
+  ATTRACT_CTX.track = T;
+  const rng = makeRng((CFG.SEED + 777 + Math.round(trackObjects[game.trackId].total)) | 0);
+  for (let i = 0; i < 3; i++) {
+    const name = DRIVER_NAMES[Math.floor(rng() * DRIVER_NAMES.length)];
+    const r = makeRacer({
+      id: 'demo' + i, name, kind: 'ai', slot: i,
+      paint: (prefs.paint + 1 + i * 3) % PAINTS.length,
+    });
+    attachMesh(r);
+    placeOnGrid(r, T, i);
+    attract.racers.push(r);
+    attract.drivers.set(r.id, createAIDriver(T, 'normal', i + 1));
+  }
+  attract.trackId = game.trackId;
+  attract.on = true;
+  attract.acc = 0;
+  attract.shot = 0;
+  attract.shotAt = performance.now();
+  attract.leader = attract.racers[0];
+  // 相机直接落到领头车后侧，避免从结算/大厅视角长距离飞过来
+  const p = attract.leader, sh = Math.sin(p.heading), ch = Math.cos(p.heading);
+  camA.cam.position.set(p.x - sh * 11, p.y + 4.5, p.z - ch * 11);
+  camA.cam.lookAt(p.x, p.y + 1, p.z);
+}
+
+function stepAttract(rawDt) {
+  attract.acc = Math.min(attract.acc + rawDt, 0.1);
+  let guard = 0;
+  while (attract.acc >= FIXED_DT && guard++ < 24) {
+    attract.acc -= FIXED_DT;
+    for (const r of attract.racers) {
+      const driver = attract.drivers.get(r.id);
+      if (driver) driver.update(r, FIXED_DT, { racers: attract.racers, gapToHuman: 0 });
+      stepRacer(r, FIXED_DT, ATTRACT_CTX);
+    }
+    resolveCarCollisions(attract.racers, ATTRACT_CTX);
+  }
+  // 相机主体 = 沿赛道进度最大的一台演示车
+  let lead = attract.racers[0], leadD = -Infinity;
+  for (const r of attract.racers) {
+    const d = racerDistance(game.track, r);
+    if (d > leadD) { leadD = d; lead = r; }
+  }
+  attract.leader = lead;
+  for (const r of attract.racers) emitRacerEffects(r, smoke, skid, game.track, quality, THREE);
+}
+
+/** 机位轮换。updateCamera 内部用 damp 收敛，切换机位时镜头自然过渡 */
+function updateAttractCamera(rawDt) {
+  if (!attract.leader) return;
+  const now = performance.now();
+  if (now - attract.shotAt > ATTRACT_SHOT_MS) {
+    attract.shot = (attract.shot + 1) % ATTRACT_SHOTS.length;
+    attract.shotAt = now;
+  }
+  const realMode = camA.mode;
+  camA.mode = ATTRACT_SHOTS[attract.shot];
+  updateCamera(camA, attract.leader, rawDt);
+  camA.mode = realMode;
 }
 
 /* ==========================================================================
@@ -1002,6 +1097,14 @@ function frame(now) {
     }
   }
 
+  /* ---- 菜单动态背景：演示车巡航；离开菜单（开局/进大厅）自动清理 ---- */
+  if (game.phase === 'menu') {
+    ensureAttract();
+    stepAttract(rawDt);
+  } else if (attract.on) {
+    disposeAttract();
+  }
+
   const inRace = game.phase === 'race' || game.phase === 'countdown' || game.phase === 'waiting';
   const frozen = !inRace && game.phase !== 'paused';
 
@@ -1060,14 +1163,17 @@ function frame(now) {
   skid.update(game.phase === 'paused' ? 0.2 : rawDt);
 
   /* ---- 相机 ---- */
-  if (game.locals.length) {
+  if (game.phase === 'menu' && attract.on) {
+    updateAttractCamera(rawDt);
+  } else if (game.locals.length) {
     updateCamera(camA, game.locals[0], rawDt);
     if (game.locals.length > 1) updateCamera(camB, game.locals[1], rawDt + 0.0001);
   }
 
-  /* ---- 阳光跟随（阴影范围） ---- */
-  if (game.world && game.locals[0]) {
-    const p = game.locals[0];
+  /* ---- 阳光跟随（阴影范围）：比赛中跟玩家车，菜单跟演示车 ---- */
+  const sunSubject = game.locals[0] || (game.phase === 'menu' ? attract.leader : null);
+  if (game.world && sunSubject) {
+    const p = sunSubject;
     const d = game.world.sunDir;
     game.world.sun.position.set(p.x + d.x * 90, p.y + d.y * 90, p.z + d.z * 90);
     game.world.sun.target.position.set(p.x, p.y, p.z);
@@ -1361,6 +1467,10 @@ window.__DR_API__ = {
   ui() { return ui; },
   net() { return net; },
   ach() { return ach; },
+  /** 菜单动态背景状态（attract mode 验收用） */
+  attract() { return attract; },
+  /** 相机世界坐标（动态背景机位轮换断言用） */
+  camPos() { return { x: camA.cam.position.x, y: camA.cam.position.y, z: camA.cam.position.z, mode: camA.mode }; },
   /** 触屏操控实例，供移动端验收脚本做状态断言 */
   touch() { return touch; },
   /** 键位注入（键盘路径回归用）：与真实 keydown 走同一张映射表 */
