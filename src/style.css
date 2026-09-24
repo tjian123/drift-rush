@@ -204,6 +204,12 @@ canvas { display: block; }
 .steppane { width: min(880px, 100%); display: flex; flex-direction: column; gap: 12px;
   animation: stepin .22s ease-out; }
 .steppane.hide { display: none; }
+/* 面板内的纵向节奏：旧布局靠 .section 的 margin-top 分隔各组控件，
+   面板化后 margin 归零，同面板内成组元素必须自己留呼吸空间，
+   否则 难度/圈数 两组按钮、名字输入框与涂装色块会贴死。 */
+.steppane .section .seg + .seg { margin-top: 10px; }
+#sec-driver .field { margin-bottom: 12px; }
+#screen-menu .steppane { margin-top: 18px; }
 /* 步骤区块统一面板化：步骤页内容（尤其第 3 步的键位说明、输入框）
    直接叠在 3D 场景上可读性差（横屏下 label 几乎看不清）。
    与 HUD 面板同款视觉：--panel 底 + 1px 边框 + 毛玻璃。 */
