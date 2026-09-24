@@ -31,6 +31,10 @@ async function ensureServer() {
   if (health) return;
   const child = spawn(process.execPath, ['server/index.js'], {
     cwd: new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
+    // 服务器只认 PORT 环境变量（默认 3000），必须把 BASE 的端口显式传进去，
+    // 否则起在 3000 而健康检查轮询 8790 —— 永远等不到就绪（曾经靠会话里
+    // 残留的 8790 服务器掩埋了这个 bug）。
+    env: { ...process.env, PORT: new URL(BASE).port || '3000' },
     stdio: 'ignore', detached: true,
   });
   child.unref();
