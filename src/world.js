@@ -73,11 +73,26 @@ function buildTerrain(THREE, track, layout) {
   return mesh;
 }
 
-/** 远山：低多边形锥体环，靠雾气融进地平线 */
+/** 远山：带棱线的低多边形山体环（锥体顶点按方位角扰动出山脊），靠雾气融进地平线 */
 function buildMountains(THREE, layout, rng) {
   const cfg = layout.mountain;
-  const geo = new THREE.ConeGeometry(1, 1, 5, 1);
+  const geo = new THREE.ConeGeometry(1, 1, 7, 2);
   geo.translate(0, 0.5, 0);
+  // 方位角驱动的棱线扰动：不同实例旋转后各不相同，避免"每个都是标准圆锥"
+  {
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const a = Math.atan2(z, x);
+      const ridge = 1 + 0.16 * Math.sin(a * 5 + 1.3) + 0.10 * Math.sin(a * 9 + 4.1)
+        + 0.05 * Math.sin(y * 7.7 + x * 3.1);
+      p.setX(i, x * ridge);
+      p.setZ(i, z * ridge);
+      // 山顶往下压一点、腰线随机鼓包，剪掉"针尖"感
+      if (y > 0.9) p.setY(i, 0.92 + (y - 1) * 0.6);
+    }
+    geo.computeVertexNormals();
+  }
   const mesh = new THREE.InstancedMesh(
     geo, new THREE.MeshLambertMaterial({ flatShading: true }), cfg.count
   );
@@ -90,7 +105,7 @@ function buildMountains(THREE, layout, rng) {
     const r = 720 + rng() * 240;
     pos.set(Math.cos(a) * r, -18 + rng() * 26, Math.sin(a) * r);
     q.setFromAxisAngle(axis, rng() * Math.PI);
-    scl.set(95 + rng() * 140, 95 + rng() * 210, 95 + rng() * 140);
+    scl.set(120 + rng() * 160, 70 + rng() * 130, 120 + rng() * 160);  // 更矮胖
     m.compose(pos, q, scl);
     mesh.setMatrixAt(i, m);
     col.setHSL(cfg.hue + rng() * 0.06, cfg.sat + rng() * 0.12, cfg.light + rng() * 0.12);
@@ -99,6 +114,35 @@ function buildMountains(THREE, layout, rng) {
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   return mesh;
+}
+
+/** 程序化建筑立面：墙面 + 玻璃窗格（diffuse），部分亮窗（emissive）。零外链贴图 */
+function makeBuildingTextures(THREE) {
+  const W = 128, H = 256, COLS = 6, ROWS = 14;
+  const cd = document.createElement('canvas'); cd.width = W; cd.height = H;
+  const ce = document.createElement('canvas'); ce.width = W; ce.height = H;
+  const dd = cd.getContext('2d'), de = ce.getContext('2d');
+  dd.fillStyle = '#d8d8dc'; dd.fillRect(0, 0, W, H);   // 白墙基色，实例色再乘
+  de.fillStyle = '#000'; de.fillRect(0, 0, W, H);
+  const cw = W / COLS, rh = H / ROWS;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * cw + cw * 0.22, y = r * rh + rh * 0.24;
+      const w = cw * 0.56, h = rh * 0.5;
+      // 玻璃：偏蓝灰，带随机明暗模拟反光
+      const g = 118 + Math.floor(Math.sin(r * 7.3 + c * 11.1) * 26);
+      dd.fillStyle = `rgb(${g - 30},${g},${g + 18})`;
+      dd.fillRect(x, y, w, h);
+      if (Math.sin(r * 13.7 + c * 5.9) > 0.62) {        // ~1/4 窗亮灯
+        de.fillStyle = Math.sin(r * 3.1 + c) > 0 ? '#ffd9a0' : '#ffb46a';
+        de.fillRect(x, y, w, h);
+      }
+    }
+  }
+  const map = new THREE.CanvasTexture(cd);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const lit = new THREE.CanvasTexture(ce);
+  return [map, lit];
 }
 
 /** 植被与建筑：沿赛道法向带状生成 + 回头校验净距（大平面随机撒点命中率太低） */
@@ -128,64 +172,109 @@ function buildScatter(THREE, track, layout, rng) {
     builds.push({ x, z });
   }
 
-  /* --- 树：树干 + 双层树冠 --- */
+  /* --- 树：针阔混交 —— 阔叶=干+扰动的团状冠，针叶=三层收分锥（比例参考真松） --- */
   const tCfg = layout.tree;
-  const trunkGeo = new THREE.CylinderGeometry(0.16, 0.24, 2.0, 5);
+  const trunkGeo = new THREE.CylinderGeometry(0.13, 0.24, 2.0, 5);
   trunkGeo.translate(0, 1.0, 0);
-  const leafGeo = new THREE.ConeGeometry(1, 1, 6);
-  leafGeo.translate(0, 0.5, 0);
+  const coneGeo = new THREE.ConeGeometry(1, 1, 7);
+  coneGeo.translate(0, 0.5, 0);
+  const blobGeo = new THREE.IcosahedronGeometry(1, 1);
+  blobGeo.translate(0, 0.5, 0);
+  { // 团冠顶点各向扰动：圆滚滚的树冠而不是标准球/锥
+    const p = blobGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const j = 1 + 0.22 * Math.sin(x * 4.9 + 1.7) * Math.sin(z * 3.8 + 0.6)
+        + 0.14 * Math.sin(y * 6.3 + x * 2.2);
+      p.setXYZ(i, x * j, y * j * 0.82, z * j);   // 略压扁更像树冠
+    }
+    blobGeo.computeVertexNormals();
+  }
   const trunkMesh = new THREE.InstancedMesh(trunkGeo,
     new THREE.MeshLambertMaterial({ color: 0x5a4634, flatShading: true }), trees.length);
-  const leafMesh = new THREE.InstancedMesh(leafGeo,
-    new THREE.MeshLambertMaterial({ flatShading: true }), trees.length * 2);
+  const coneMesh = new THREE.InstancedMesh(coneGeo,
+    new THREE.MeshLambertMaterial({ flatShading: true }), trees.length * 3);
+  const blobMesh = new THREE.InstancedMesh(blobGeo,
+    new THREE.MeshLambertMaterial({ flatShading: true }), trees.length * 3);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion();
   const pos = new THREE.Vector3(), scl = new THREE.Vector3(), col = new THREE.Color();
   const axis = new THREE.Vector3(0, 1, 0);
   const [sMin, sMax] = tCfg.size;
-  let li = 0;
+  let ci = 0, bi = 0;
+  const put = (mesh, idx, x, y, z, sx, sy, sz, hueJ) => {
+    q.setFromAxisAngle(axis, hueJ);
+    pos.set(x, y, z); scl.set(sx, sy, sz);
+    m.compose(pos, q, scl);
+    mesh.setMatrixAt(idx, m);
+  };
   trees.forEach((t, i) => {
     const sc = sMin + rng() * (sMax - sMin);
-    q.setFromAxisAngle(axis, rng() * Math.PI * 2);
-    pos.set(t.x, t.y, t.z); scl.set(sc, sc, sc);
-    m.compose(pos, q, scl);
-    trunkMesh.setMatrixAt(i, m);
-    for (let layer = 0; layer < 2; layer++) {
-      const ls = sc * (1 - layer * 0.34);
-      pos.set(t.x, t.y + 1.55 * sc + layer * 1.5 * sc, t.z);
-      scl.set(1.7 * ls, (4.2 - layer * 1.2) * sc, 1.7 * ls);
-      m.compose(pos, q, scl);
-      leafMesh.setMatrixAt(li, m);
-      col.setHSL(tCfg.hue + rng() * 0.08, tCfg.sat + rng() * 0.18, tCfg.light + rng() * 0.13);
-      leafMesh.setColorAt(li, col);
-      li++;
+    const rot = rng() * Math.PI * 2;
+    const conifer = rng() < 0.5;
+    if (conifer) {
+      put(trunkMesh, i, t.x, t.y, t.z, sc, sc * 0.9, sc, rot);
+      for (let l = 0; l < 3; l++) {
+        const rr = [1.55, 1.12, 0.72][l];
+        const hh = [2.6, 2.3, 1.9][l];
+        const yy = t.y + [1.0, 2.3, 3.5][l] * sc;
+        put(coneMesh, ci, t.x, yy, t.z, rr * sc, hh * sc, rr * sc, rot + l * 0.5);
+        col.setHSL(tCfg.hue + rng() * 0.06, tCfg.sat + rng() * 0.16,
+          tCfg.light + rng() * 0.10 + l * 0.035);   // 上层更亮，模拟受光
+        coneMesh.setColorAt(ci, col);
+        ci++;
+      }
+    } else {
+      put(trunkMesh, i, t.x, t.y, t.z, sc * 0.9, sc * 1.35, sc * 0.9, rot); // 阔叶树干更高
+      const nb = 2 + (rng() > 0.45 ? 1 : 0);
+      for (let b = 0; b < nb; b++) {
+        const br = (b === 0 ? 1.9 : 1.15 + rng() * 0.5) * sc;
+        const bx = t.x + (b === 0 ? 0 : (rng() - 0.5) * 2.2 * sc);
+        const bz = t.z + (b === 0 ? 0 : (rng() - 0.5) * 2.2 * sc);
+        const by = t.y + (b === 0 ? 2.75 : 2.4 + rng() * 1.3) * sc;
+        put(blobMesh, bi, bx, by, bz, br, br * (0.8 + rng() * 0.25), br, rng() * Math.PI * 2);
+        col.setHSL(tCfg.hue + rng() * 0.08, tCfg.sat + rng() * 0.18,
+          tCfg.light + rng() * 0.13 + (b === 0 ? 0.04 : 0));
+        blobMesh.setColorAt(bi, col);
+        bi++;
+      }
     }
   });
-  leafMesh.count = li;
+  coneMesh.count = ci;
+  blobMesh.count = bi;
   trunkMesh.instanceMatrix.needsUpdate = true;
-  leafMesh.instanceMatrix.needsUpdate = true;
-  if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true;
-  trunkMesh.castShadow = leafMesh.castShadow = true;
-  group.add(trunkMesh, leafMesh);
+  coneMesh.instanceMatrix.needsUpdate = true;
+  blobMesh.instanceMatrix.needsUpdate = true;
+  if (coneMesh.instanceColor) coneMesh.instanceColor.needsUpdate = true;
+  if (blobMesh.instanceColor) blobMesh.instanceColor.needsUpdate = true;
+  trunkMesh.castShadow = coneMesh.castShadow = blobMesh.castShadow = true;
+  group.add(trunkMesh, coneMesh, blobMesh);
 
-  /* --- 建筑：成簇低多边形盒子，夜景有窗光 --- */
+  /* --- 建筑：窗格 Canvas 纹理 + 屋顶材质，底面加宽、矮层为主，摆脱"细尖柱" --- */
   const bCfg = layout.building;
   const bGeo = new THREE.BoxGeometry(1, 1, 1);
   bGeo.translate(0, 0.5, 0);
-  const bMesh = new THREE.InstancedMesh(bGeo, new THREE.MeshLambertMaterial({
-    flatShading: true, emissive: bCfg.emissive, emissiveIntensity: 1,
-  }), builds.length * 4);
-  let bi = 0;
+  const [wallTex, litTex] = makeBuildingTextures(THREE);
+  const wallMat = new THREE.MeshLambertMaterial({
+    map: wallTex, emissive: 0xffffff, emissiveMap: litTex, emissiveIntensity: 0.85,
+  });
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0x3c4048, flatShading: true });
+  // BoxGeometry 材质组顺序：+x, -x, +y(顶), -y(底), +z, -z
+  const bMesh = new THREE.InstancedMesh(bGeo,
+    [wallMat, wallMat, roofMat, roofMat, wallMat, wallMat], builds.length * 4);
+  bi = 0;
   for (const b of builds) {
     for (let c = 0; c < 4; c++) {
-      const ox = b.x + (rng() - 0.5) * 30, oz = b.z + (rng() - 0.5) * 30;
+      const ox = b.x + (rng() - 0.5) * 34, oz = b.z + (rng() - 0.5) * 34;
       q.setFromAxisAngle(axis, Math.round(rng() * 4) * (Math.PI / 2));
       pos.set(ox, terrainHeight(track, ox, oz) - 1.0, oz);
-      scl.set(6 + rng() * 10, 9 + rng() * bCfg.tall, 6 + rng() * 10);
+      const fp = 11 + rng() * 12;                              // 底面 11~23，不再是细柱
+      const tall = rng() < 0.72 ? 7 + rng() * 9 : 16 + rng() * bCfg.tall;  // 矮层为主
+      scl.set(fp, tall, fp * (0.75 + rng() * 0.5));
       m.compose(pos, q, scl);
       bMesh.setMatrixAt(bi, m);
       const warm = rng() > 0.45;
-      col.setHSL(warm ? bCfg.hueWarm : bCfg.hueCool, warm ? 0.30 : 0.10, 0.26 + rng() * 0.16);
-      bMesh.setColorAt(bi, col);
+      col.setHSL(warm ? bCfg.hueWarm : bCfg.hueCool, warm ? 0.22 : 0.06, 0.5 + rng() * 0.22);
+      bMesh.setColorAt(bi, col);   // 实例色乘在白墙基色上做外立面色调
       bi++;
     }
   }
@@ -249,9 +338,10 @@ export function buildWorld(THREE, scene, track, renderer) {
       scene.remove(group);
       group.traverse((o) => {
         if (o.geometry) o.geometry.dispose();
-        if (o.material) {
-          if (o.material.map) o.material.map.dispose();
-          o.material.dispose();
+        const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+        for (const mat of mats) {
+          if (mat.map) mat.map.dispose();
+          mat.dispose();
         }
       });
       scene.fog = null;
