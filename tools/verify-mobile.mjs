@@ -341,9 +341,13 @@ async function dragHold(page, { from, to, id = 1, steps = 5, holdMs = 45, releas
     await page.eval(`window.__DR_API__.showAccount()`);
     await sleep(400);
     const acc = await page.eval(`(() => {
+      // 只信计算样式，不信类名 —— .hide 曾被组件类的 display 覆盖过（真实踩坑）
       const vis = (id) => {
         const el = document.getElementById(id);
-        return el ? !el.classList.contains('hide') && getComputedStyle(el).display !== 'none' : null;
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' &&
+               el.getBoundingClientRect().height > 0;
       };
       const txt = (id) => ((document.getElementById(id) || {}).textContent || '').replace(/\\s/g, '');
       return {
@@ -373,25 +377,32 @@ async function dragHold(page, { from, to, id = 1, steps = 5, holdMs = 45, releas
     check('N5 邮箱格式错误时给出明确提示',
       /邮箱/.test(badEmail || ''), `"${(badEmail || '').trim()}"`);
 
-    /* 视图互斥 + 提示不串味 */
+    /* 视图互斥 + 提示不串味（同样以计算样式为准） */
     const viewSwitch = await page.eval(`(() => {
+      const vis = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' &&
+               el.getBoundingClientRect().height > 0;
+      };
       document.getElementById('lnk-pwd').click();
-      const pwd = { pane: !document.getElementById('pane-pwd').classList.contains('hide'),
-                    code: document.getElementById('pane-code').classList.contains('hide'),
+      const pwd = { pane: vis('pane-pwd'),
+                    code: vis('pane-code'),
+                    reset: vis('pane-reset'),
                     hint: (document.getElementById('acc-hint-pwd').textContent || ''),
                     mainHint: (document.getElementById('acc-hint').textContent || '') };
       document.getElementById('lnk-forgot').click();
-      const reset = { pane: !document.getElementById('pane-reset').classList.contains('hide'),
-                      pwd: document.getElementById('pane-pwd').classList.contains('hide') };
+      const reset = { pane: vis('pane-reset'), pwd: vis('pane-pwd'), code: vis('pane-code') };
       document.getElementById('lnk-back-code2').click();
-      const back = { code: !document.getElementById('pane-code').classList.contains('hide'),
-                     reset: document.getElementById('pane-reset').classList.contains('hide') };
+      const back = { code: vis('pane-code'),
+                     reset: vis('pane-reset'), pwd: vis('pane-pwd') };
       return { pwd, reset, back };
     })()`);
-    check('N6 三个面板互斥显示，来回切换都不会同时露出两个',
-      viewSwitch.pwd.pane && viewSwitch.pwd.code
-      && viewSwitch.reset.pane && viewSwitch.reset.pwd
-      && viewSwitch.back.code && viewSwitch.back.reset,
+    check('N6 三个面板互斥显示（按真实渲染判定），来回切换都不会同时露出两个',
+      viewSwitch.pwd.pane && !viewSwitch.pwd.code && !viewSwitch.pwd.reset
+      && viewSwitch.reset.pane && !viewSwitch.reset.pwd && !viewSwitch.reset.code
+      && viewSwitch.back.code && !viewSwitch.back.reset && !viewSwitch.back.pwd,
       JSON.stringify(viewSwitch));
     check('N7 各面板提示独立：主流程的提示不会串到密码面板',
       viewSwitch.pwd.mainHint === '' || viewSwitch.pwd.hint !== viewSwitch.pwd.mainHint,

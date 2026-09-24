@@ -157,6 +157,13 @@ canvas { display: block; }
 #netstat.err .led { background: var(--red); box-shadow: 0 0 8px var(--red); }
 #netstat b { color: var(--text); font-weight: 700; }
 
+/* ---------- 通用隐藏 ----------
+   这里曾经只有 .screen.hide，结果 .accpane / .section / .accinput 这些
+   display:flex 的元素加了 .hide 也只是「类名上隐藏」，视觉上仍然占位 ——
+   账号页两个面板同时显示就是这么来的。必须有一条带 !important 的通用规则，
+   否则任何 display:flex/grid 的组件类都会把它覆盖掉。 */
+.hide { display: none !important; }
+
 /* ---------- 全屏界面（菜单 / 大厅 / 结算 / 暂停） ---------- */
 .screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column;
   align-items: center; justify-content: center; overflow-y: auto;

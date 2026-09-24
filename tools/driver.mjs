@@ -70,10 +70,13 @@ export async function makeDriver(page, player = 1, opts = {}) {
       }
 
       tick++;
-      const refresh = tick % 8 === 0;      // 每 ~8 步（约 0.6s）重发一次，模拟键盘自动重复
+      // 每 ~6 步重发一次按住状态，模拟键盘自动重复。
+      // 间隔不能太长：机器负载高时 eval 往返变慢，控制回路采样变稀，
+      // 若死区又宽，车会在两次修正之间冲向护墙 —— A8 曾因此偶发失败。
+      const refresh = tick % 6 === 0;
       await set('gas', codes.gas, true, refresh);
-      await set('left', codes.left, st.diff > 0.07, refresh);
-      await set('right', codes.right, st.diff < -0.07, refresh);
+      await set('left', codes.left, st.diff > 0.05, refresh);
+      await set('right', codes.right, st.diff < -0.05, refresh);
       return st;
     },
   };

@@ -193,12 +193,35 @@ export class Page {
     })()`);
   }
 
+  /**
+   * 元素是否**真的可见**。
+   * 不能只看 classList.contains('hide')：样式里如果组件类的 display 覆盖了
+   * .hide（这个坑真实存在过），类名在但元素仍占位 —— 断言就会全部失真。
+   * 这里以计算样式 + 实际占位为准。
+   */
   async visible(id) {
     return this.eval(`(() => {
       const el = document.getElementById(${JSON.stringify(id)});
       if (!el) return false;
       const cs = getComputedStyle(el);
-      return !el.classList.contains('hide') && cs.display !== 'none';
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    })()`);
+  }
+
+  /** 与 visible() 同源，但返回面板显隐的明细（便于断言「互斥显示」） */
+  async panelState(ids) {
+    return this.eval(`(() => {
+      const out = {};
+      for (const id of ${JSON.stringify(ids)}) {
+        const el = document.getElementById(id);
+        if (!el) { out[id] = null; continue; }
+        const cs = getComputedStyle(el);
+        out[id] = cs.display !== 'none' && cs.visibility !== 'hidden' &&
+                  el.getBoundingClientRect().height > 0;
+      }
+      return out;
     })()`);
   }
 

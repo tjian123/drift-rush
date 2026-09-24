@@ -190,13 +190,20 @@ const log = (...a) => console.log(...a);
 
     const flow = await page.eval(`(() => {
       const g = document.getElementById('acc-guest');
+      const vis = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' &&
+               el.getBoundingClientRect().height > 0;
+      };
       const txt = (id) => (document.getElementById(id) || {}).textContent || '';
       return {
-        codeShown: !document.getElementById('pane-code').classList.contains('hide'),
-        pwdHidden: document.getElementById('pane-pwd').classList.contains('hide'),
-        resetHidden: document.getElementById('pane-reset').classList.contains('hide'),
-        stepEmail: !document.getElementById('step-email').classList.contains('hide'),
-        stepCode: document.getElementById('step-code').classList.contains('hide'),
+        codeShown: vis('pane-code'),
+        pwdHidden: !vis('pane-pwd'),
+        resetHidden: !vis('pane-reset'),
+        stepEmail: vis('step-email'),
+        stepCode: !vis('step-code'),
         primaryBtn: txt('btn-send-code').replace(/\\s/g, ''),
         hasEmail: !!document.getElementById('otp-email'),
         pwdLink: !!document.getElementById('lnk-pwd'),
@@ -216,12 +223,19 @@ const log = (...a) => console.log(...a);
       JSON.stringify({ pwd: flow.pwdLink, forgot: flow.forgotLink }));
 
     const pwdPane = await page.eval(`(() => {
+      const vis = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' &&
+               el.getBoundingClientRect().height > 0;
+      };
       document.getElementById('lnk-pwd').click();
-      return { pwd: !document.getElementById('pane-pwd').classList.contains('hide'),
-               code: document.getElementById('pane-code').classList.contains('hide') };
+      return { pwd: vis('pane-pwd'), code: !vis('pane-code') };
     })()`);
     await sleep(150);
-    check('F7f 可切入密码登录 / 返回验证码登录', pwdPane.pwd && pwdPane.code, JSON.stringify(pwdPane));
+    check('F7f 可切入密码登录 / 返回验证码登录（按真实渲染判定）',
+      pwdPane.pwd && pwdPane.code, JSON.stringify(pwdPane));
 
     const hasForms = await page.eval(`({
       pwd: !!document.getElementById('btn-pwd-login'),
