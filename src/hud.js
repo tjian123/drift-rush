@@ -190,8 +190,6 @@ export class UI {
   /** 赛道卡片（含迷你赛道图形与本赛道最佳圈速） */
   buildTrackCards(trackObjects, bests, selected) {
     this.el.trackList.innerHTML = '';
-    // 5 张卡片起改竖排紧凑网格（横排卡片在 5 列下文字区太窄）
-    this.el.trackList.classList.toggle('t5', TRACK_ORDER.length >= 5);
     for (const id of TRACK_ORDER) {
       const track = trackObjects[id];
       const t = TRACKS[id];
@@ -219,6 +217,35 @@ export class UI {
         this.cb.onPrefs && this.cb.onPrefs(this.state);
       });
       this.el.trackList.appendChild(card);
+    }
+    this.wireTrackNav(selected);
+  }
+
+  /** 赛道卡横向翻看：一行放不下时显示左右箭头，按页滚动（buildTrackCards 会多次调用，必须幂等） */
+  wireTrackNav(selected) {
+    const list = this.el.trackList;
+    const prev = document.getElementById('track-prev');
+    const next = document.getElementById('track-next');
+    if (!prev || !next) return;
+    if (!prev.dataset.wired) {
+      prev.dataset.wired = '1';
+      const page = (dir) => list.scrollBy({ left: dir * (list.clientWidth - 70), behavior: 'smooth' });
+      prev.addEventListener('click', () => page(-1));
+      next.addEventListener('click', () => page(1));
+      const sync = () => {
+        const max = list.scrollWidth - list.clientWidth;
+        prev.classList.toggle('off', max <= 4 || list.scrollLeft <= 4);
+        next.classList.toggle('off', max <= 4 || list.scrollLeft >= max - 4);
+      };
+      list.addEventListener('scroll', sync, { passive: true });
+      window.addEventListener('resize', sync);
+      this._trackNavSync = sync;
+    }
+    // 重建卡片后 scrollLeft 归零，重算箭头可见性；选中卡若在视野外则滚到可见
+    if (this._trackNavSync) requestAnimationFrame(this._trackNavSync);
+    const on = list.querySelector('.trackcard.on');
+    if (on && on.scrollIntoView) {
+      requestAnimationFrame(() => on.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
     }
   }
 
