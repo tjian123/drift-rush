@@ -150,8 +150,103 @@ async function main() {
   await page.eval(`window.__DR_API__.ui().showScreen('menu')`);
   await sleep(1500);
   await page.shot('tools/shot-menu-bg.png');
-
   await page.close();
+
+  /* ================================================
+   * 移动端/桌面菜单分步引导（B9–B12）
+   * 每步一屏内放下、不用滚动即可操作；步骤推进/回退正常。
+   * 每档视口用独立页面 + 清空存储，触摸模拟在导航前开启。
+   * ================================================*/
+  async function menuLayoutCheck(tag, w, h, { touchDefault = true, touch = true } = {}) {
+    const p = await b.newPage();
+    await p.emulateMobile({ width: w, height: h, maxTouchPoints: 5, mobile: touch, touch });
+    await p.readyUrl(BASE + '/');
+    await p.eval('try { localStorage.clear() } catch (e) {}');
+    await p.readyUrl(BASE + '/');           // 清存储后重载，拿到真实默认态
+    await sleep(700);
+    const paneState = `(() => ({
+      step: [0, 1, 2].map((k) => !document.getElementById(['step-track','step-format','step-driver'][k]).classList.contains('hide')),
+      overX: document.getElementById('screen-menu').scrollWidth - document.getElementById('screen-menu').clientWidth,
+      oneScreen: document.getElementById('screen-menu').scrollHeight <= innerHeight,
+      prev: !document.getElementById('btn-prev').classList.contains('hide'),
+      next: !document.getElementById('btn-next').classList.contains('hide'),
+      go: !document.getElementById('btn-go').classList.contains('hide'),
+      stpOn: (document.querySelector('#menu-steps .stp.on') || {}).dataset ? document.querySelector('#menu-steps .stp.on').dataset.step : null,
+    }))()`;
+    const vis = `((id) => { const r = document.getElementById(id).getBoundingClientRect();
+      return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1; })`;
+
+    /* 第 1 步：赛道（首屏） */
+    let s = await p.eval(paneState);
+    check(`${tag} 首屏只有「赛道」面板`, s.step[0] && !s.step[1] && !s.step[2] && s.next && !s.prev && !s.go && s.stpOn === '0',
+      `panes=[${s.step}] next=${s.next} go=${s.go}`);
+    check(`${tag} 首屏无横向溢出`, s.overX === 0, `overX=${s.overX}`);
+
+    /* 第 2 步：赛制 */
+    await p.eval(`document.getElementById('btn-next').click()`);
+    await sleep(250);
+    s = await p.eval(paneState);
+    check(`${tag} 「下一步」进入赛制面板（可回退）`, s.step[1] && !s.step[0] && s.prev && !s.go && s.stpOn === '1',
+      `panes=[${s.step}] prev=${s.prev}`);
+
+    /* 第 3 步：车手（开始比赛出现在这一步） */
+    await p.eval(`document.getElementById('btn-next').click()`);
+    await sleep(250);
+    s = await p.eval(paneState);
+    const goVis = await p.eval(`(${vis})('btn-go')`);
+    check(`${tag} 车手面板出现「开始比赛」且在视口内`, s.step[2] && s.go && !s.next && goVis,
+      `go=${s.go} next=${s.next} 在视口内=${goVis}`);
+    check(`${tag} 全流程一屏放下（无纵向滚动）`, s.oneScreen);
+
+    /* 操作设置：默认态 + 展开可达 */
+    const ctrl = await p.eval(`(() => {
+      const sec = document.getElementById('ctrl-section');
+      const collapsedDefault = sec.classList.contains('collapsed');
+      document.getElementById('ctrl-toggle').click();
+      const opened = !sec.classList.contains('collapsed');
+      const g = document.getElementById('ctrl-grid').getBoundingClientRect();
+      const ok = g.top >= 0 && g.bottom <= innerHeight + 1;
+      document.getElementById('ctrl-toggle').click();
+      return { collapsedDefault, opened, ok };
+    })()`);
+    if (touchDefault) {
+      check(`${tag} 触屏默认折叠操作设置、展开后在视口内`, ctrl.collapsedDefault && ctrl.opened && ctrl.ok,
+        `默认折叠=${ctrl.collapsedDefault} 展开=${ctrl.opened} 可达=${ctrl.ok}`);
+    } else {
+      check(`${tag} 桌面默认展开操作设置`, !ctrl.collapsedDefault, `collapsed=${ctrl.collapsedDefault}`);
+    }
+
+    /* 回退 */
+    await p.eval(`document.getElementById('btn-prev').click()`);
+    await sleep(200);
+    s = await p.eval(paneState);
+    check(`${tag} 「上一步」回到赛制面板`, s.step[1] && !s.step[2], `panes=[${s.step}]`);
+    await p.close();
+  }
+
+  await menuLayoutCheck('B9 竖屏 412×880:', 412, 880);
+  await menuLayoutCheck('B10 横屏 880×412:', 880, 412);
+  await menuLayoutCheck('B11 小横屏 740×360:', 740, 360);
+  await menuLayoutCheck('B12 桌面 1280×800:', 1280, 800, { touchDefault: false, touch: false });
+
+  /* B13: 桌面回车推进（最后一步回车 = 直接发车前最后确认，这里只验证推进） */
+  {
+    const p = await b.newPage();
+    await p.readyUrl(BASE + '/');
+    await p.eval('try { localStorage.clear() } catch (e) {}');
+    await p.readyUrl(BASE + '/');
+    await sleep(700);
+    await p.eval(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))`);
+    await sleep(200);
+    const s1 = await p.eval(`document.getElementById('step-format').classList.contains('hide')`);
+    await p.eval(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))`);
+    await sleep(200);
+    const s2 = await p.eval(`document.getElementById('step-driver').classList.contains('hide')`);
+    check('B13 桌面按 Enter 逐步推进引导（赛道→赛制→车手）', !s1 && !s2,
+      `第1次回车进赛制=${!s1} 第2次进车手=${!s2}`);
+    await p.close();
+  }
+
   await b.kill();
 
   console.log(`\n\x1b[1m${passed}/${results.length} 通过\x1b[0m`);

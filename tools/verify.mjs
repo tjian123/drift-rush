@@ -12,23 +12,11 @@
  *   node tools/verify.mjs A C       只跑指定项
  * =========================================================================*/
 
-import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { sweepOldProfiles } from './cdp.mjs';
+import { Browser, sleep, httpJson, CDP_PORT } from './cdp.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-
-const CHROME = process.env.DR_CHROME ||
-  'C:/Users/tjian/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
-const CDP_PORT = Number(process.env.DR_CDP_PORT || 9401);
 const SERVER = process.env.DR_SERVER || 'http://127.0.0.1:8790';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(...a);
 
 const results = [];
@@ -38,132 +26,6 @@ function check(name, ok, detail = '') {
   return ok;
 }
 
-/* ------------------------------------------------------------------ HTTP */
-/** 必须带超时：端口上残留半死实例时，无超时的请求会永久挂住 */
-function httpJson(url, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    const req = http.get(url, (r) => {
-      let b = '';
-      r.on('data', (c) => (b += c));
-      r.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } });
-    });
-    req.on('error', reject);
-    req.setTimeout(timeoutMs, () => req.destroy(new Error(`http 超时 ${timeoutMs}ms ${url}`)));
-  });
-}
-
-/** 该端口上有没有 CDP 实例在应答；没有则返回 null */
-async function tryVersion(port, timeoutMs = 2500) {
-  try { return await httpJson(`http://127.0.0.1:${port}/json/version`, timeoutMs); }
-  catch (e) { return null; }
-}
-
-/**
- * 关闭端口上残留的浏览器实例并等端口释放。
- * 残留实例占着端口时，新 Chrome 绑不上端口（静默退出），而 /json/version
- * 会被旧实例应答 —— 脚本会悄悄连到僵尸浏览器上，症状是「卡住」或断言诡异失败。
- */
-async function shutdownStale(port) {
-  const v = await tryVersion(port, 2500);
-  if (!v || !v.webSocketDebuggerUrl) return false;
-  try {
-    const ws = await openWs(v.webSocketDebuggerUrl);
-    const p = new Page(ws);
-    try { await p.send('Browser.close', {}, 3000); } catch (e) { /* 关闭瞬间连接会断 */ }
-    try { ws.close(); } catch (e) { }
-  } catch (e) { /* 连不上也无妨 */ }
-  for (let i = 0; i < 24; i++) {
-    await sleep(250);
-    if (!(await tryVersion(port, 1200))) return true;
-  }
-  return false;
-}
-
-/* ------------------------------------------------------------------- CDP */
-class Page {
-  constructor(ws) {
-    this.ws = ws;
-    this.id = 0;
-    this.pending = new Map();
-    this.events = [];
-    ws.addEventListener('message', (ev) => {
-      const m = JSON.parse(ev.data);
-      if (m.id && this.pending.has(m.id)) {
-        const { resolve, reject } = this.pending.get(m.id);
-        this.pending.delete(m.id);
-        m.error ? reject(new Error(JSON.stringify(m.error))) : resolve(m.result);
-      } else if (m.method) this.events.push(m);
-    });
-  }
-  send(method, params = {}, timeout = 30000) {
-    const id = ++this.id;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
-      setTimeout(() => {
-        if (this.pending.has(id)) { this.pending.delete(id); reject(new Error('timeout ' + method)); }
-      }, timeout);
-    });
-  }
-  async eval(expr) {
-    const r = await this.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
-    if (r.exceptionDetails) throw new Error('eval: ' + (r.exceptionDetails.text || '') + ' ' +
-      (r.exceptionDetails.exception?.description || ''));
-    return r.result.value;
-  }
-  async key(code, key, vk, down) {
-    await this.send('Input.dispatchKeyEvent', {
-      type: down ? 'keyDown' : 'keyUp', code, key,
-      windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk,
-    });
-  }
-  async shot(file) {
-    const r = await this.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(ROOT, file), Buffer.from(r.data, 'base64'));
-  }
-  errors() {
-    const out = [];
-    for (const e of this.events) {
-      if (e.method === 'Runtime.exceptionThrown') {
-        out.push('EXCEPTION: ' + (e.params.exceptionDetails.text || '') + ' ' +
-          (e.params.exceptionDetails.exception?.description || ''));
-      }
-      if (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error') {
-        out.push('CONSOLE: ' + e.params.args.map((a) => a.value ?? a.description ?? '').join(' '));
-      }
-      if (e.method === 'Log.entryAdded' && e.params.entry.level === 'error') {
-        out.push('LOG: ' + e.params.entry.text);
-      }
-    }
-    return out;
-  }
-  async readyUrl(url) {
-    await this.send('Page.navigate', { url });
-    for (let i = 0; i < 140; i++) {
-      await sleep(400);
-      try {
-        // __DR_READY__ = 首帧已渲染；__DR_BOOTED__ = 场景构建完成（后台标签 rAF 可能被节流）
-        if (await this.eval('!!(window.__DR_READY__ || window.__DR_BOOTED__)')) {
-          // 再确认渲染循环真的在跑（联机测试要求两端同时渲染）
-          for (let k = 0; k < 30; k++) {
-            await sleep(300);
-            const f = await this.eval('window.__DR__ ? window.__DR__.frames : 0');
-            if (f > 20) return true;
-          }
-          return true;    // 渲染可能被节流，但页面本身是好的
-        }
-        const err = await this.eval('window.__DR_ERROR__ || null');
-        if (err) { log('    页面自报错误: ' + err); return false; }
-      } catch (e) { /* 导航中 */ }
-    }
-    return false;
-  }
-
-  /** 关闭这个页面（断开 CDP 连接即可，Chrome 会回收 target） */
-  async close() {
-    try { if (this._ws) this._ws.close(); } catch (e) { }
-  }
-}
 
 /* ------------------------------------------------- 自动驾驶（循线控制器） */
 // 统一由 tools/driver.mjs 提供：两份近似实现容易在修复时漏改一边
@@ -357,7 +219,7 @@ async function testOnline(browser, { poll = false } = {}) {
         players: window.__DR_API__.net().players.length,
         isHost: window.__DR_API__.net().isHost,
       })`).catch((e) => ({ evalFail: String(e) }));
-      log(`    [diag] ${label}: ${JSON.stringify(d)}`);
+      log(`    [diag] ${label}: ${JSON.stringify(d)} target=${p.targetId}`);
       log(`    [diag] ${label} 页面错误: ${p.errors().slice(0, 3).join(' | ') || '无'}`);
     }
   }
@@ -423,113 +285,6 @@ async function testServer() {
   check('E4 静态服务阻止路径穿越', code === 404 || code === 403, 'HTTP ' + code);
 }
 
-/* ============================================================ 浏览器管理 */
-class Browser {
-  constructor(chrome) { this.chrome = chrome; this.browserWs = null; this.pages = []; }
-
-  static async launch() {
-    // profile 放系统临时目录，且每次用独立目录：
-    //   1) 留在项目里会污染部署包（十几 MB 且带锁文件）
-    //   2) 复用同一目录需先删除，而 Windows 上同步删 Chrome profile 会卡死事件循环
-    //      （profile 内含 reparse point；详见 cdp.mjs 的 sweepOldProfiles 注释）
-    const profile = path.join(os.tmpdir(), `dr-cdp-profile-${process.pid.toString(36)}${Date.now().toString(36)}`);
-    sweepOldProfiles('cdp-profile').catch(() => { });      // 老目录异步清理，不 await
-    // 先腾干净端口：残留实例会让我们连到僵尸浏览器上（详见 shutdownStale 注释）
-    if (await tryVersion(CDP_PORT, 1500)) {
-      const freed = await shutdownStale(CDP_PORT);
-      if (!freed) throw new Error(`端口 ${CDP_PORT} 被一个无法关闭的 CDP 实例占用，请先手动结束该进程`);
-      console.log(`  [cdp] 已清理 ${CDP_PORT} 端口上的残留浏览器实例`);
-    }
-    const chrome = spawn(CHROME, [
-      // 注意：该 Chromium 上 --headless=new 会直接退出，必须用 --headless
-      '--headless', '--no-sandbox', '--disable-dev-shm-usage',
-      '--remote-debugging-port=' + CDP_PORT,
-      '--user-data-dir=' + profile,
-      '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--mute-audio',
-      // 无头环境靠 SwiftShader 软件光栅化提供 WebGL 2.0
-      '--enable-unsafe-swiftshader',
-      // 不走系统代理：否则访问远端域名会被代理探测拖慢每个静态资源数秒
-      '--no-proxy-server',
-      // 多开标签页跑联机测试：禁用后台标签的 rAF 节流，否则第一个标签会被冻结
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-      '--window-size=960,600',
-      'about:blank',
-    ], { stdio: 'ignore' });
-
-    let version = null;
-    for (let i = 0; i < 80; i++) {
-      await sleep(300);
-      if (chrome.exitCode !== null) break;
-      try { version = await httpJson(`http://127.0.0.1:${CDP_PORT}/json/version`, 2500); break; }
-      catch (e) { /* 还没起来 */ }
-    }
-    if (!version) {
-      try { chrome.kill(); } catch (e) { }
-      throw new Error('Chrome 调试端口未就绪' +
-        (chrome.exitCode !== null ? `（Chrome 已退出，code=${chrome.exitCode}）` : ''));
-    }
-    return new Browser(chrome);
-  }
-
-  /** 优雅关闭：先 Browser.close 再兜底 kill，不留僵尸实例占端口 */
-  async kill() {
-    for (const p of this.pages) { try { p.ws.close(); } catch (e) { } }
-    this.pages = [];
-    try { if (this.browserWs) await this.browserWs.send('Browser.close', {}, 2000); } catch (e) { }
-    await sleep(700);
-    try { if (this.chrome.exitCode === null) this.chrome.kill(); } catch (e) { }
-  }
-
-  async browserConn() {
-    if (this.browserWs) return this.browserWs;
-    const v = await httpJson(`http://127.0.0.1:${CDP_PORT}/json/version`);
-    this.browserWs = new Page(await openWs(v.webSocketDebuggerUrl));
-    return this.browserWs;
-  }
-
-  /** 新建一个页面（复用初始 about:blank，之后用 Target.createTarget） */
-  async newPage() {
-    const b = await this.browserConn();
-    let targetId = null;
-    if (!this.usedInitial) {
-      this.usedInitial = true;
-      const list = await httpJson(`http://127.0.0.1:${CDP_PORT}/json/list`);
-      const first = list.find((t) => t.type === 'page');
-      if (first) targetId = first.id;
-    }
-    if (!targetId) {
-      const r = await b.send('Target.createTarget', { url: 'about:blank' });
-      targetId = r.targetId;
-      await sleep(600);
-    }
-    const list = await httpJson(`http://127.0.0.1:${CDP_PORT}/json/list`);
-    const t = list.find((x) => x.id === targetId);
-    if (!t) throw new Error('找不到页面目标 ' + targetId);
-    const ws = await openWs(t.webSocketDebuggerUrl);
-    const page = new Page(ws);
-    await page.send('Runtime.enable');
-    await page.send('Log.enable');
-    await page.send('Page.enable');
-    page._ws = ws;
-    this.pages.push(page);
-    return page;
-  }
-
-  async kill() {
-    for (const p of this.pages) { try { p._ws.close(); } catch (e) { } }
-    this.chrome.kill();
-  }
-}
-
-function openWs(url) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
-    ws.addEventListener('open', () => resolve(ws), { once: true });
-    ws.addEventListener('error', (e) => reject(new Error('ws 连接失败 ' + url)), { once: true });
-  });
-}
 
 /* ==================================================================== main */
 const only = process.argv.slice(2).map((s) => s.toUpperCase());
@@ -543,7 +298,7 @@ const want = (k) => only.length === 0 || only.includes(k);
   try {
     if (want('E')) await testServer();
     if (want('A') || want('B') || want('C') || want('D')) {
-      browser = await Browser.launch();
+      browser = await Browser.launch({ port: CDP_PORT, profileName: 'cdp-profile' });
       log(`\n\x1b[2m浏览器已启动（CDP :${CDP_PORT}）\x1b[0m`);
     }
     if (want('A')) await testSolo(browser);

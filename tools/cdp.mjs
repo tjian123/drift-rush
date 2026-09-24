@@ -116,9 +116,11 @@ export function openWs(url) {
 
 /* ------------------------------------------------------------------- Page */
 export class Page {
-  constructor(ws) {
+  constructor(ws, meta = {}) {
     this.ws = ws;
     this._ws = ws;
+    this.port = meta.port || null;          // close() 销毁 target 用
+    this.targetId = meta.targetId || null;
     this.id = 0;
     this.pending = new Map();
     this.events = [];
@@ -290,6 +292,13 @@ export class Page {
   }
 
   async close() {
+    // 必须销毁 target 而不是只断开 WebSocket：否则 target 连同它身上的
+    // 设备模拟状态（触摸/视口）一起残留，newPage() 兜底复用时会把
+    // 上一页的模拟状态带给下一页（测试结果被悄悄污染）。
+    if (this.port && this.targetId) {
+      try { await httpJson(`http://127.0.0.1:${this.port}/json/close/${this.targetId}`, 2000); }
+      catch (e) { /* target 可能已自行退出 */ }
+    }
     try { this.ws.close(); } catch (e) { }
   }
 
@@ -299,13 +308,15 @@ export class Page {
    * 页面里的 `'ontouchstart' in window / navigator.maxTouchPoints` 是在脚本
    * 首次执行时读取的，导航完再开就晚了 —— 触屏 UI 根本不会出现。
    */
-  async emulateMobile({ width = 880, height = 412, maxTouchPoints = 5, mobile = true } = {}) {
+  async emulateMobile({ width = 880, height = 412, maxTouchPoints = 5, mobile = true, touch = true } = {}) {
     await this.send('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile,
       screenOrientation: { type: width >= height ? 'landscapePrimary' : 'portraitPrimary', angle: 0 },
     });
-    await this.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints });
-    await this.send('Emulation.setEmitTouchEventsForMouse', { enabled: true, configuration: 'mobile' });
+    // touch:false = 只改视口不模拟触摸（桌面回归用），否则 isTouch 会被误判为 true
+    await this.send('Emulation.setTouchEmulationEnabled',
+      touch ? { enabled: true, maxTouchPoints } : { enabled: false });
+    await this.send('Emulation.setEmitTouchEventsForMouse', { enabled: touch, configuration: 'mobile' });
   }
 
   /**
@@ -419,22 +430,27 @@ export class Browser {
   }
 
   async newPage() {
-    const list = await httpJson(`http://127.0.0.1:${this.port}/json/list`);
-    let target = list.find((t) => t.type === 'page' && t.url === 'about:blank');
-    if (!target) {
-      // 兜底一：显式开一个干净 target
-      try {
-        const r = await this.browserWs.send('Target.createTarget', { url: 'about:blank' });
-        await sleep(600);
-        const l2 = await httpJson(`http://127.0.0.1:${this.port}/json/list`);
-        target = l2.find((x) => x.id === r.targetId);
-      } catch (e) { /* 继续兜底二 */ }
-      // 兜底二：复用任意已存在的页面（比直接失败更有用；页面会被导航覆盖）
-      if (!target) target = list.find((t) => t.type === 'page');
+    // 一律显式新建 target，绝不复用任何已存在的页面（包括 Chrome 启动自带的
+    // about:blank 起始页）。复用型兜底在联机测试里是毒药：host/guest 两个
+    // Page 先后创建、后导航，第二个 newPage 调用时第一个页面仍是 about:blank，
+    // 会被误认成「现成页面」绑走 —— 两个 Page 绑同一 target，所有 eval 打到
+    // 同一页面上（症状：两页诊断输出完全相同、房间人数/名册断言互相串台）。
+    let targetId;
+    try {
+      const r = await this.browserWs.send('Target.createTarget', { url: 'about:blank' });
+      targetId = r.targetId;
+    } catch (e) {
+      throw new Error('Target.createTarget 失败: ' + (e && e.message || e));
     }
-    if (!target) throw new Error('找不到可用的页面目标');
+    let target = null;
+    for (let i = 0; i < 20 && !target; i++) {
+      await sleep(300);
+      const l2 = await httpJson(`http://127.0.0.1:${this.port}/json/list`);
+      target = l2.find((x) => x.id === targetId);
+    }
+    if (!target) throw new Error('创建新页面失败（target ' + targetId + ' 未出现在 /json/list）');
     const ws = await openWs(target.webSocketDebuggerUrl);
-    const page = new Page(ws);
+    const page = new Page(ws, { port: this.port, targetId: target.id });
     await page.send('Runtime.enable');
     await page.send('Log.enable');
     await page.send('Page.enable');

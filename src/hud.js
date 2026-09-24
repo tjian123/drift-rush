@@ -111,6 +111,32 @@ export class UI {
     }
   }
 
+  /* ==================================================== 菜单分步引导 */
+  /* 1 赛道 → 2 赛制 → 3 车手。首屏只切赛道，每步一屏内放得下，
+     不依赖滚动（移动端矮横屏也全部可达）。 */
+  static MENU_STEPS = ['step-track', 'step-format', 'step-driver'];
+  static STEP_NAMES = ['赛道', '赛制', '车手'];
+
+  setMenuStep(i) {
+    i = Math.max(0, Math.min(UI.MENU_STEPS.length - 1, i));
+    this.menuStep = i;
+    UI.MENU_STEPS.forEach((id, k) => $(id).classList.toggle('hide', k !== i));
+    $('menu-steps').innerHTML = UI.STEP_NAMES.map((t, k) =>
+      `<button class="stp${k === i ? ' on' : ''}" data-step="${k}">${k + 1} ${t}</button>`).join('');
+    $('btn-prev').classList.toggle('hide', i === 0);
+    const last = i === UI.MENU_STEPS.length - 1;
+    $('btn-next').classList.toggle('hide', last);
+    $('btn-go').classList.toggle('hide', !last);
+  }
+
+  menuAdvance() {
+    // 只有主菜单可见时才响应（成就/排行榜/账号面板打开时菜单是隐藏的）
+    if (this.el.menu.classList.contains('hide')) return false;
+    if (this.menuStep >= UI.MENU_STEPS.length - 1) { this.cb.onGo(this.state); return true; }
+    this.setMenuStep(this.menuStep + 1);
+    return true;
+  }
+
   /* ==================================================== 菜单构建 */
   buildMenu(prefs, bests, achievements) {
     this.state = { ...this.state, ...prefs };
@@ -146,6 +172,7 @@ export class UI {
     });
 
     this.renderMenuFoot(bests, achievements);
+    this.setMenuStep(0);          // 每次回到菜单都从「选赛道」开始
   }
 
   renderMenuFoot(bests, achievements) {
@@ -455,6 +482,14 @@ export class UI {
     segClick('mode-seg', 'mode', 'mode');
     segClick('level-seg', 'level', 'level');
     segClick('laps-seg', 'laps', 'laps');
+
+    /* 分步导航 */
+    $('btn-prev').addEventListener('click', () => this.setMenuStep(this.menuStep - 1));
+    $('btn-next').addEventListener('click', () => this.menuAdvance());
+    $('menu-steps').addEventListener('click', (e) => {
+      const b = e.target.closest('.stp');
+      if (b) this.setMenuStep(Number(b.dataset.step));
+    });
 
     this.el.nameInput.addEventListener('input', () => {
       this.state.name = this.el.nameInput.value.slice(0, 10);

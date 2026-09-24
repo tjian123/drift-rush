@@ -731,6 +731,10 @@ function localSlotCount() { return game.locals.length; }
 const kbHold = { gas: false, brake: false, left: false, right: false, handbrake: false };
 
 addEventListener('keydown', (e) => {
+  /* 主菜单：回车推进分步引导（最后一步 = 开始比赛） */
+  if (game.phase === 'menu' && e.key === 'Enter' && !e.repeat && !e.isComposing) {
+    if (ui.menuAdvance()) { e.preventDefault(); return; }
+  }
   const p2 = game.mode === MODES.SPLIT && localSlotCount() > 1;
   if (p2) {
     // 分屏：方向键归 P2，WASD 归 P1
@@ -829,6 +833,27 @@ function wireCtrlSettings() {
   const rowIds = ['row-autogas', 'row-hand', 'row-sens', 'row-tilt'];
   for (const id of rowIds) document.getElementById(id).classList.toggle('hide', !touch.isTouch);
   document.getElementById('row-keys').classList.toggle('hide', touch.isTouch);
+
+  /* 折叠：触屏设备默认收起（矮横屏下整块会跑出屏幕），桌面默认展开；
+     用户手动展开/收起后记住选择。 */
+  const sec = document.getElementById('ctrl-section');
+  const tgl = document.getElementById('ctrl-toggle');
+  if (sec && tgl) {
+    // 触屏设备默认收起（矮横屏下整块会跑出屏幕），桌面默认展开；手动切换后记住
+    const stored = localStorage.getItem('dr-ctrl-collapsed');
+    let isCollapsed = stored === null ? touch.isTouch : stored === '1';
+    const sync = () => {
+      sec.classList.toggle('collapsed', isCollapsed);
+      tgl.setAttribute('aria-expanded', String(!isCollapsed));
+    };
+    sync();
+    tgl.addEventListener('click', () => {
+      isCollapsed = !isCollapsed;
+      localStorage.setItem('dr-ctrl-collapsed', isCollapsed ? '1' : '0');
+      sync();
+    });
+  }
+
   if (note) {
     note.textContent = touch.isTouch
       ? '左侧按住拖动转向 · 右侧踏板加速刹车'

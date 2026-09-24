@@ -169,7 +169,13 @@ canvas { display: block; }
   align-items: center; justify-content: center; overflow-y: auto;
   background: radial-gradient(ellipse 62% 62% at 50% 50%, rgba(12,16,30,.72), rgba(5,7,14,.95));
   backdrop-filter: blur(4px); padding: 24px; }
+/* 关键修复：内容超高时 flex 居中会把顶部裁出滚动原点之外（永远滚不回去）。
+   safe center = 放得下才居中，放不下改为起点对齐并正常滚动。 */
+@supports (justify-content: safe center) {
+  .screen { justify-content: safe center; }
+}
 .screen.hide { display: none; }
+.screen > * { flex-shrink: 0; }
 /* 菜单屏透出 3D 场景（动态背景）：顶部近全透，向下渐暗保证文字可读；
    整屏 backdrop blur 会把场景糊掉，菜单单独关掉 —— 控件自身有 --panel 底色 */
 #screen-menu {
@@ -187,7 +193,31 @@ canvas { display: block; }
 .tagline { margin-top: 8px; font-size: 11px; letter-spacing: 8px; color: var(--dim2);
   text-align: center; }
 
-.section { width: min(880px, 96vw); margin-top: 22px; }
+/* ---------- 菜单分步引导：1 赛道 → 2 赛制 → 3 车手 ----------
+   每步一个面板，一屏内放下，不依赖滚动；PC/移动端同一套流程。 */
+.menu-top { width: min(880px, 100%); display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; }
+.menu-top .logo { font-size: clamp(26px, 4.2vw, 40px); letter-spacing: -2px; }
+.menu-links { display: flex; gap: 8px; flex: none; }
+.menu-links .btn { padding: 8px 14px; font-size: 11px; letter-spacing: 2px; }
+
+.steppane { width: min(880px, 100%); display: flex; flex-direction: column; gap: 12px;
+  animation: stepin .22s ease-out; }
+.steppane.hide { display: none; }
+.steppane .section { width: auto; margin-top: 0; }
+@keyframes stepin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.menu-nav { width: min(880px, 100%); margin-top: 16px; display: flex;
+  flex-direction: column; align-items: center; gap: 10px; }
+.steps { display: flex; gap: 8px; }
+.stp { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--dim2); font-family: inherit; font-size: 11px;
+  font-weight: 700; letter-spacing: 1px; cursor: pointer; transition: all .16s; }
+.stp.on { border-color: rgba(255,212,121,.6); color: var(--amber);
+  background: linear-gradient(150deg, rgba(255,212,121,.18), rgba(255,154,92,.08)); }
+.menu-nav .center { margin-top: 0; }
+
+.section { width: min(880px, 100%); margin-top: 22px; }
 .section > .label { font-size: 10px; letter-spacing: 2.5px; color: var(--dim2);
   margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
 .section > .label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -456,6 +486,14 @@ body.touch-on.hand-left #achstack { right: auto; left: 16px; align-items: flex-s
 
 /* ---------- 操作设置 ---------- */
 .labnote { font-size: 10px; letter-spacing: 0; color: var(--dim2); font-weight: 400; }
+
+/* ---- 操作设置折叠（移动端默认收起，见 wireCtrlSettings） ---- */
+.ctrl-toggle { width: 100%; background: none; border: none; cursor: pointer; font-family: inherit;
+  padding: 0; text-align: left; color: inherit; }
+.ctrl-toggle::after { display: none; }   /* 让位给右侧箭头，不再拉通栏装饰线 */
+.ctrl-toggle .chev { margin-left: auto; transition: transform .18s; color: var(--dim2); font-size: 10px; }
+#ctrl-section.collapsed .ctrl-toggle .chev { transform: rotate(-90deg); }
+#ctrl-section.collapsed .ctrlgrid { display: none; }
 .ctrlgrid { display: flex; flex-direction: column; gap: 7px; }
 .ctrlrow { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: center;
   padding: 10px 13px; border-radius: 11px; background: rgba(255,255,255,.03);
@@ -596,6 +634,49 @@ body.touch-on.hand-left #achstack { right: auto; left: 16px; align-items: flex-s
   .ctrlrow .cd2 { grid-column: 1 / -1; }
   .ctrlrow .seg.mini { grid-column: 2; grid-row: 1; }
   .accinput.code { font-size: 19px; letter-spacing: 7px; text-indent: 7px; }
+
+  /* ---- 菜单分步引导：窄屏紧凑化，每步一屏内放下 ---- */
+  #screen-menu { padding: 14px 14px 20px; }
+  .menu-top .logo { font-size: clamp(22px, 6.4vw, 30px); }
+  .menu-links .btn { padding: 7px 10px; font-size: 10px; }
+  #screen-menu .tracks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #screen-menu .trackcard { padding: 8px 9px; gap: 9px; }
+  #screen-menu .trackcard canvas { width: 52px; height: 52px; }
+  #screen-menu .trackcard .nm { font-size: 12.5px; }
+  #screen-menu .trackcard .ds { font-size: 9.5px; margin-top: 2px; }
+  #screen-menu .trackcard .bs { font-size: 9.5px; margin-top: 3px; }
+  #screen-menu .seg { gap: 6px; }
+  #screen-menu .seg button { padding: 10px 6px; }
+  #screen-menu .seg button small { font-size: 9px; }
+  #screen-menu .field input { padding: 9px 11px; font-size: 13px; }
+  #screen-menu .paint { width: 28px; height: 28px; }
+  #screen-menu .center .btn { padding: 11px 18px; font-size: 13px; letter-spacing: 2px; }
+  #screen-menu > .foot { margin-top: 10px; font-size: 10px; }
+  #screen-menu .stp { padding: 4px 10px; font-size: 10px; }
+}
+
+/* ---------- 手机横屏（矮视口）：分步面板天然一屏，只做紧凑微调 ---------- */
+@media (max-height: 520px) and (orientation: landscape) {
+  #screen-menu { padding: 10px 18px 12px; }
+  .menu-top .logo { font-size: clamp(18px, 5.4vh, 26px); }
+  .steppane { gap: 8px; }
+  #screen-menu .section .label { margin-bottom: 5px; }
+  #screen-menu .seg button { padding: 8px 6px; font-size: 12px; gap: 2px; }
+  #screen-menu .seg button small { display: none; }
+  #screen-menu .field input { padding: 8px 10px; font-size: 12.5px; }
+  #screen-menu .paint { width: 24px; height: 24px; border-radius: 7px; }
+  #screen-menu .paints { gap: 5px; }
+  #screen-menu .center .btn { padding: 9px 16px; font-size: 12px; letter-spacing: 2px; }
+  #screen-menu .menu-nav { margin-top: 8px; gap: 6px; }
+  #screen-menu > .foot { font-size: 9.5px; margin-top: 4px; line-height: 1.5; }
+
+  /* 第 3 步双栏：车手在左、操作设置在右，展开后也能一屏放下 */
+  #step-driver { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 8px 18px; align-items: start; }
+  #step-driver .section { margin: 0; }
+  .ctrlrow .cd2 { display: none; }          /* 矮横屏收起说明，行高减半 */
+  .ctrlrow { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .ctrlrow:last-child { border-bottom: none; }
 }
 
 /* ---------- 横屏矮视口：把 HUD 压扁，给操控区腾地方 ---------- */

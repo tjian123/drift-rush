@@ -111,28 +111,39 @@
   <div class="t2">横屏视野更宽，方向盘和踏板也更好按</div>
 </div>
 
-<!-- ============================ 主菜单 ============================ -->
+<!-- ============================ 主菜单（分步引导） ============================
+     不做长页滚动：三个步骤各占一屏内的一个面板，首屏只选赛道。
+     1 赛道 → 2 赛制 → 3 车手，每步「下一步」推进，最后一步「开始比赛」。 -->
 <div class="screen" id="screen-menu">
-  <div class="logo">DRIFT RUSH</div>
-  <div class="tagline">多 人 漂 移 竞 速</div>
-
-  <div class="section">
-    <div class="label">模式</div>
-    <div class="seg" id="mode-seg">
-      <button data-mode="solo">单人计时<small>和 AI 车手比赛</small></button>
-      <button data-mode="split">本地分屏<small>同屏双人 + AI</small></button>
-      <button data-mode="online">在线联机<small>建房 / 输码加入</small></button>
+  <div class="menu-top">
+    <div class="logo">DRIFT RUSH</div>
+    <div class="menu-links">
+      <button class="btn ghost" id="btn-ach">成 就</button>
+      <button class="btn ghost" id="btn-board">排 行 榜</button>
+      <button class="btn ghost" id="btn-account">账 号</button>
     </div>
   </div>
 
-  <div class="section">
-    <div class="label">赛道</div>
-    <div class="tracks" id="track-list"></div>
+  <!-- 第 1 步：赛道（首屏只切赛道，背景动态演示的就是它） -->
+  <div class="steppane" id="step-track">
+    <div class="section" id="sec-tracks">
+      <div class="label">选择赛道</div>
+      <div class="tracks" id="track-list"></div>
+    </div>
   </div>
 
-  <div class="section row2">
-    <div class="field">
-      <div class="label" style="margin:0">难度 / 圈数</div>
+  <!-- 第 2 步：赛制 -->
+  <div class="steppane hide" id="step-format">
+    <div class="section" id="sec-mode">
+      <div class="label">模式</div>
+      <div class="seg" id="mode-seg">
+        <button data-mode="solo">单人计时<small>和 AI 车手比赛</small></button>
+        <button data-mode="split">本地分屏<small>同屏双人 + AI</small></button>
+        <button data-mode="online">在线联机<small>建房 / 输码加入</small></button>
+      </div>
+    </div>
+    <div class="section" id="sec-rules">
+      <div class="label">难度 / 圈数</div>
       <div class="seg" id="level-seg">
         <button data-level="easy">轻松</button>
         <button data-level="normal">普通</button>
@@ -144,60 +155,69 @@
         <button data-laps="5">5 圈</button>
       </div>
     </div>
-    <div class="field">
-      <div class="label" style="margin:0">车手 / 涂装</div>
+  </div>
+
+  <!-- 第 3 步：车手与操作 -->
+  <div class="steppane hide" id="step-driver">
+    <div class="section" id="sec-driver">
+      <div class="label">车手 / 涂装</div>
       <input id="name-input" maxlength="10" placeholder="输入车手名字">
       <div class="paints" id="paint-list"></div>
     </div>
-  </div>
 
-  <!-- 操作设置：桌面端只展示键位，移动端才出现可调项 -->
-  <div class="section" id="ctrl-section">
-    <div class="label">操作 <span class="labnote" id="ctrl-note"></span></div>
-    <div class="ctrlgrid" id="ctrl-grid">
-      <div class="ctrlrow hide" id="row-autogas">
-        <span class="ck">自动油门</span>
-        <span class="cd2">不按油门也会自动加速，只需专心转向（踩刹车时自动让位）</span>
-        <button class="sw" id="sw-autogas" role="switch" aria-checked="true"><i></i></button>
-      </div>
-      <div class="ctrlrow hide" id="row-hand">
-        <span class="ck">手别</span>
-        <span class="cd2">左撇子可把方向盘换到右侧</span>
-        <div class="seg mini" id="seg-hand">
-          <button data-hand="right">右手</button>
-          <button data-hand="left">左手</button>
+    <!-- 操作设置：桌面端只展示键位，移动端才出现可调项 -->
+    <div class="section" id="ctrl-section">
+      <button class="label ctrl-toggle" id="ctrl-toggle" type="button" aria-expanded="true">
+        操作 <span class="labnote" id="ctrl-note"></span><span class="chev">▾</span>
+      </button>
+      <div class="ctrlgrid" id="ctrl-grid">
+        <div class="ctrlrow hide" id="row-autogas">
+          <span class="ck">自动油门</span>
+          <span class="cd2">不按油门也会自动加速，只需专心转向（踩刹车时自动让位）</span>
+          <button class="sw" id="sw-autogas" role="switch" aria-checked="true"><i></i></button>
         </div>
-      </div>
-      <div class="ctrlrow hide" id="row-sens">
-        <span class="ck">转向灵敏度</span>
-        <span class="cd2">越高，同样的拖动距离给出的转向越大</span>
-        <div class="seg mini" id="seg-sens">
-          <button data-sens="0.7">稳</button>
-          <button data-sens="1">标准</button>
-          <button data-sens="1.5">灵敏</button>
+        <div class="ctrlrow hide" id="row-hand">
+          <span class="ck">手别</span>
+          <span class="cd2">左撇子可把方向盘换到右侧</span>
+          <div class="seg mini" id="seg-hand">
+            <button data-hand="right">右手</button>
+            <button data-hand="left">左手</button>
+          </div>
         </div>
-      </div>
-      <div class="ctrlrow hide" id="row-tilt">
-        <span class="ck">陀螺仪转向</span>
-        <span class="cd2">左右倾斜手机转向，需要设备支持（iOS 需授权）</span>
-        <button class="sw" id="sw-tilt" role="switch" aria-checked="false"><i></i></button>
-      </div>
-      <div class="ctrlrow" id="row-keys">
-        <span class="ck">键盘 / 鼠标</span>
-        <span class="cd2"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶 ·
-          <kbd>SPACE</kbd> 手刹 · <kbd>C</kbd> 视角 · <kbd>R</kbd> 复位 · <kbd>P</kbd> 暂停 · <kbd>M</kbd> 静音</span>
+        <div class="ctrlrow hide" id="row-sens">
+          <span class="ck">转向灵敏度</span>
+          <span class="cd2">越高，同样的拖动距离给出的转向越大</span>
+          <div class="seg mini" id="seg-sens">
+            <button data-sens="0.7">稳</button>
+            <button data-sens="1">标准</button>
+            <button data-sens="1.5">灵敏</button>
+          </div>
+        </div>
+        <div class="ctrlrow hide" id="row-tilt">
+          <span class="ck">陀螺仪转向</span>
+          <span class="cd2">左右倾斜手机转向，需要设备支持（iOS 需授权）</span>
+          <button class="sw" id="sw-tilt" role="switch" aria-checked="false"><i></i></button>
+        </div>
+        <div class="ctrlrow" id="row-keys">
+          <span class="ck">键盘 / 鼠标</span>
+          <span class="cd2"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶 ·
+            <kbd>SPACE</kbd> 手刹 · <kbd>C</kbd> 视角 · <kbd>R</kbd> 复位 · <kbd>P</kbd> 暂停 · <kbd>M</kbd> 静音</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="center">
-    <button class="btn" id="btn-go">开 始 比 赛</button>
-    <button class="btn ghost" id="btn-ach">成 就</button>
-    <button class="btn ghost" id="btn-board">排 行 榜</button>
-    <button class="btn ghost" id="btn-account">账 号</button>
+  <!-- 步骤条 + 导航 -->
+  <div class="menu-nav">
+    <div class="steps" id="menu-steps"></div>
+    <div class="center navbtns">
+      <button class="btn ghost hide" id="btn-prev">上 一 步</button>
+      <button class="btn" id="btn-next">下 一 步</button>
+      <button class="btn hide" id="btn-go">开 始 比 赛</button>
+    </div>
+    <div class="cloudline" id="cloudline"></div>
   </div>
 
-  <div class="cloudline" id="cloudline"></div>
   <div class="foot" id="menu-foot"></div>
 </div>
 
