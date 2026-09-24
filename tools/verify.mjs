@@ -46,7 +46,10 @@ async function testSolo(browser) {
     menuVisible: !document.getElementById('screen-menu').classList.contains('hide')
   })`);
   check('A2 WebGL 可用', String(info.webgl).includes('WebGL'), info.webgl);
-  check('A3 主菜单渲染 4 张赛道卡片', info.tracks === 4, info.tracks + ' 张');
+  // 卡片数跟 TRACK_ORDER 走（新增赛道自动适配），不硬编码
+  const { TRACK_ORDER } = await import('../src/config.js');
+  check(`A3 主菜单渲染 ${TRACK_ORDER.length} 张赛道卡片`,
+    info.tracks === TRACK_ORDER.length, info.tracks + ' 张');
   check('A4 主菜单可见', info.menuVisible);
 
   await page.eval(`window.__DR_API__.start({ mode:'solo', track:'coast', laps:1, level:'normal' })`);

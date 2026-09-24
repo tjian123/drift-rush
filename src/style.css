@@ -260,6 +260,16 @@ canvas { display: block; }
 .trackcard .bs { font-size: 10px; color: var(--green); margin-top: 4px;
   font-variant-numeric: tabular-nums; }
 
+/* 5 张赛道卡起切竖排紧凑网格：横排卡片在 5 列下文字区只剩 ~90px，
+   描述会挤成四行。竖排（图上文下、收描述）每张卡信息密度才撑得住。 */
+.tracks.t5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tracks.t5 .trackcard { flex-direction: column; align-items: center; text-align: center;
+  gap: 7px; padding: 10px 8px; }
+.tracks.t5 .trackcard canvas { width: 56px; height: 56px; }
+.tracks.t5 .trackcard .nm { font-size: 12.5px; }
+.tracks.t5 .trackcard .ds { display: none; }   /* 描述收进 title 悬停提示 */
+.tracks.t5 .trackcard .bs { margin-top: 0; font-size: 9.5px; }
+
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 7px; }
 .field input {

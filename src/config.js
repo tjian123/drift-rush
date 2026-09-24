@@ -151,9 +151,39 @@ export const TRACKS = {
     mountain: { count: 140, hue: 0.60, sat: 0.14, light: 0.62 },
     music: { root: 52, mode: [0, 4, 7, 11, 14] },
   },
+
+  /* 晨雾山道：布局刻意做出真实山路的两段式节奏 ——
+     前半段 k2/k3 大摆幅的长弯爬坡，后半段 k8 高频项压出连续 S 弯与近发卡，
+     配合浓雾与低角度晨光强化「清晨进山」的临场感。 */
+  mountain: {
+    id: 'mountain',
+    name: '晨雾山道',
+    desc: '发卡与 S 弯连环，节奏多变',
+    laps: 3,
+    polar: {
+      base: 186,
+      terms: [
+        { k: 2, amp: 38, phase: 1.2, fn: 'cos' },
+        { k: 3, amp: 21, phase: -0.5, fn: 'sin' },
+        { k: 5, amp: 11, phase: 2.0, fn: 'cos' },
+        { k: 8, amp: 11, phase: 0.6, fn: 'sin' },
+      ],
+    },
+    elev: { terms: [{ k: 1, amp: 7.0, phase: 1.8 }, { k: 3, amp: 2.4, phase: 0.4 }] },
+    sky: { top: 0x27354f, mid: 0x9a8fb0, bot: 0xf2c9a0 },
+    fog: { color: 0xc9d4e8, near: 100, far: 900 },
+    sun: { color: 0xffe8c8, intensity: 1.9, dir: [0.50, 0.20, -0.85] },
+    hemi: { sky: 0xbcc8e0, ground: 0x2e3b28, intensity: 1.0 },
+    ambient: { color: 0x4a5568, intensity: 0.4 },
+    ground: { grass: 0x3e5a38, dry: 0x6a6a48, rock: 0x5c5c64, sand: 0x77765c, mix: 0.3 },
+    tree: { hue: 0.30, sat: 0.32, light: 0.16, count: 700, size: [0.7, 2.6] },
+    building: { count: 46, emissive: 0x1a120a, tall: 18, hueWarm: 0.08, hueCool: 0.55 },
+    mountain: { count: 170, hue: 0.58, sat: 0.16, light: 0.30 },
+    music: { root: 50, mode: [0, 2, 3, 7, 10] },
+  },
 };
 
-export const TRACK_ORDER = ['coast', 'city', 'desert', 'snow'];
+export const TRACK_ORDER = ['coast', 'city', 'desert', 'snow', 'mountain'];
 
 /* ---------------------------------------------------------------------------
  * 车辆涂装（联机时用涂装索引区分玩家）
@@ -190,7 +220,7 @@ export const ACHIEVEMENTS = [
   { id: 'online_first', title: '联机首战', desc: '完成一场在线联机比赛', tier: 'starter' },
   { id: 'online_party', title: '人齐了', desc: '在 4 人以上的房间完赛', tier: 'pro' },
   { id: 'splitscreen', title: '沙发对决', desc: '完成一场本地分屏对战', tier: 'starter' },
-  { id: 'tour_all', title: '全图制霸', desc: '在 4 条赛道上各完成一圈', tier: 'master' },
+  { id: 'tour_all', title: '全图制霸', desc: '在全部赛道上各完成一圈', tier: 'master' },
   { id: 'ai_beater', title: '黄金右脚', desc: 'AI 难度设为「困难」并夺冠', tier: 'master' },
   { id: 'night_owl', title: '夜猫子', desc: '在午夜都市跑进单圈 60 秒', tier: 'pro' },
   { id: 'photo_finish', title: '毫厘之争', desc: '以 0.3 秒内的差距赢得比赛', tier: 'master' },

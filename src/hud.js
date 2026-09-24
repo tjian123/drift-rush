@@ -190,12 +190,15 @@ export class UI {
   /** 赛道卡片（含迷你赛道图形与本赛道最佳圈速） */
   buildTrackCards(trackObjects, bests, selected) {
     this.el.trackList.innerHTML = '';
+    // 5 张卡片起改竖排紧凑网格（横排卡片在 5 列下文字区太窄）
+    this.el.trackList.classList.toggle('t5', TRACK_ORDER.length >= 5);
     for (const id of TRACK_ORDER) {
       const track = trackObjects[id];
       const t = TRACKS[id];
       const card = document.createElement('button');
       card.className = 'trackcard' + (id === selected ? ' on' : '');
       card.dataset.track = id;
+      card.title = `${t.desc} · 周长 ${Math.round(track.total)}m`;
 
       const cv = document.createElement('canvas');
       cv.width = cv.height = 124;
