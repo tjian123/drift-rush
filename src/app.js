@@ -9,7 +9,8 @@
 
 import * as THREE from 'three';
 
-import { CFG, TRACKS, TRACK_ORDER, PAINTS, AI_LEVELS, MODES, STORAGE } from './config.js';
+import { CFG, TRACKS, TRACK_ORDER, PAINTS, AI_LEVELS, MODES, FORMATS, STORAGE } from './config.js';
+import { createItemSystem, ITEM_NAMES } from './items.js';
 import { buildTrack, terrainHeight } from './track.js';
 import { buildRoad } from './road.js';
 import { buildWorld } from './world.js';
@@ -33,6 +34,7 @@ function loadPrefs() {
     track: get('dr-track', 'coast'),
     level: get('dr-level', 'normal'),
     laps: get('dr-laps', 3),
+    format: get('dr-format', 'classic'),
     name: get('dr-name', ''),
     paint: get('dr-paint', 0),
     bests: get('dr-bests', {}),
@@ -56,6 +58,8 @@ const game = {
   trackId: prefs.track,
   laps: prefs.laps,
   level: prefs.level,
+  format: prefs.format || FORMATS.CLASSIC,
+  items: null,                // 道具赛系统（item 赛制时创建，clearRace 销毁）
   track: null,
   world: null,
   road: null,
@@ -124,10 +128,12 @@ const ui = new UI({
     const trackChanged = prefs.track !== s.track;
     const changed =
       prefs.mode !== s.mode || trackChanged || prefs.level !== s.level ||
-      prefs.laps !== s.laps || prefs.name !== s.name || prefs.paint !== s.paint;
+      prefs.laps !== s.laps || prefs.format !== s.format ||
+      prefs.name !== s.name || prefs.paint !== s.paint;
     Object.assign(prefs, s);
     saveKey('dr-mode', s.mode); saveKey('dr-track', s.track); saveKey('dr-level', s.level);
-    saveKey('dr-laps', s.laps); saveKey('dr-name', s.name); saveKey('dr-paint', s.paint);
+    saveKey('dr-laps', s.laps); saveKey('dr-format', s.format);
+    saveKey('dr-name', s.name); saveKey('dr-paint', s.paint);
     // 菜单动态背景实时跟随所选赛道：点卡片即换景（重建世界与演示车）
     if (trackChanged && game.phase === 'menu') { ensureWorld(s.track); ensureAttract(); }
     if (changed) audio.chime('click');
@@ -144,7 +150,7 @@ const ui = new UI({
       audio.init();
     } else {
       ui.showNet = false;
-      startRace({ mode: s.mode, track: s.track, laps: s.laps, level: s.level });
+      startRace({ mode: s.mode, track: s.track, laps: s.laps, level: s.level, format: s.format });
     }
   },
   async onCreate(s) {
@@ -166,9 +172,10 @@ const ui = new UI({
   onRaceStart() { net.start(); },
   onLeave() { net.close(); ui.showLobbyConnect(); game.phase = 'lobby'; },
   onResume() { if (game.phase === 'paused') { game.phase = 'race'; ui.showScreen(null); } },
-  onRestart() { startRace({ mode: game.mode, track: game.trackId, laps: game.laps, level: game.level }); },
+  onRestart() { startRace({ mode: game.mode, track: game.trackId, laps: game.laps, level: game.level, format: game.format }); },
   onQuit() { quitToMenu(); },
   onBackMenu() { quitToMenu(); },
+  onUseItem: (slot) => useLocalItem(slot),
 });
 
 ach.onUnlock = (meta) => {
@@ -462,15 +469,26 @@ function clearRace() {
   game.remoteMeshes.clear();
   skid.clear();
   smoke.clear();
+  if (game.items) { game.items.dispose(); game.items = null; window.__DR_IX__ = null; }
   for (const r of [...net.remotes.values()]) r.hasData = false;
 }
 
-function startRace({ mode, track, laps, level }) {
+/** 使用本地玩家的道具（键盘 E / 右Shift，或点击道具槽） */
+function useLocalItem(slot) {
+  const r = game.locals[slot - 1];
+  if (!r || !game.items || game.phase !== 'race') return;
+  const it = game.items.useItem(r, game.racers);
+  if (it) ui.toast(`使用 ${ITEM_NAMES[it] || it}`, true, 900);
+}
+
+function startRace({ mode, track, laps, level, format }) {
   audio.init();
   clearRace();
   game.mode = mode;
   game.laps = laps;
   game.level = level;
+  /* 联机暂不支持道具赛（各客户端不同步道具状态），强制回竞速 */
+  game.format = mode === MODES.ONLINE ? FORMATS.CLASSIC : (format || FORMATS.CLASSIC);
   game.phase = 'countdown';
   game.onlineFinished = false;
   game.waitingResults = false;
@@ -481,9 +499,56 @@ function startRace({ mode, track, laps, level }) {
   const T = ensureWorld(track);
   ui.resetForRace(track);
   ui.setSplit(mode === MODES.SPLIT);
+  ui.setItemMode(game.format === FORMATS.ITEM);
   ui.restorePauseButtons();
   ui.showScreen(null);
   touch.resetHome();          // 方向盘回到默认位，避免上一局的浮动位置残留
+
+  /* ---- 道具赛：道具箱 / 油污 / 导弹系统 ---- */
+  if (game.format === FORMATS.ITEM) {
+    game.items = createItemSystem(THREE, scene, T);
+    window.__DR_IX__ = game.items;   // 验收脚本/调试钩子
+    game.items.testHooks = {
+      giveLocal: (type) => {
+        const me = game.locals[0]; if (!me) return false;
+        me.itemRollT = 0; me.itemRollFinal = null; me.item = type || 'boost';
+        return true;
+      },
+      useLocal: (slot) => { useLocalItem(slot || 1); return true; },
+      teleportLocalToBox: (i) => {
+        const me = game.locals[0];
+        const b = game.items && game.items.boxes[i];
+        if (!me || !b || !b.active) return false;
+        // 必须同步 idx/lateral，否则下一次 stepRacer 的 project(hint=旧idx)
+        // 会在有限窗口里找不到真位置，护墙钳制把车拉离箱子好几米
+        me.x = b.x; me.y = b.y; me.z = b.z;
+        me.idx = b.idx; me.lateral = b.lane;
+        me.vF = 0; me.vL = 0;
+        return true;
+      },
+      oilAhead: () => {
+        const me = game.locals[0]; if (!me) return false;
+        const sh = Math.sin(me.heading), ch = Math.cos(me.heading);
+        game.items.spawnOil(me.x + sh * 16, me.y, me.z + ch * 16, me.idx, 'x');
+        return true;
+      },
+      fireMissileAtMe: () => {
+        const me = game.locals[0]; if (!me) return false;
+        const n = game.track.n;
+        const back = Math.round(60 / game.track.step);   // 60m ≈ 多少个采样点
+        return game.items.fireMissile(
+          { id: 'test', idx: (me.idx - back + n * 2) % n, lateral: me.lateral }, me);
+      },
+      spinLocal: () => {
+        const me = game.locals[0];
+        return me ? game.items.spinOut(me, 'oil') : null;
+      },
+    };
+    const hint = mode === MODES.SPLIT
+      ? 'P1 按 E · P2 按右Shift 使用道具，也可点击道具槽'
+      : (touch.isTouch ? '吃到道具箱后点击左下道具槽使用' : '按 E 使用道具');
+    setTimeout(() => ui.toast(`道具赛！吃道具箱抽道具 · ${hint}`, true, 4200), 600);
+  }
 
   /* 触屏玩家的第一局给一次操作提示 —— 拖动转向这件事不看提示不容易猜到 */
   if (touch.isTouch && !prefs.touchTold) {
@@ -756,6 +821,9 @@ addEventListener('keydown', (e) => {
     else { camA.mode = (camA.mode + 1) % CFG.CAM_MODES.length; camB.mode = camA.mode; }
   }
   if (e.code === 'KeyR' && game.phase !== 'menu') { resetLocalRacers(); }
+  if (e.code === 'KeyE' && !e.repeat && game.phase === 'race') { useLocalItem(1); }
+  if (e.code === 'ShiftRight' && !e.repeat && game.phase === 'race'
+    && game.mode === MODES.SPLIT) { useLocalItem(2); }
   if (e.code === 'KeyM') { audio.setMuted(!audio.muted); ui.toast(audio.muted ? '已静音' : '声音开启', true, 900); }
   if (e.code === 'KeyP' && (game.phase === 'race' || game.phase === 'paused')) {
     if (game.phase === 'race') { game.phase = 'paused'; ui.restorePauseButtons(); ui.showScreen('pause'); }
@@ -1151,6 +1219,17 @@ function frame(now) {
       }
       for (const r of game.racers) if (r.kind === 'ai') updateLapProgress(r);
 
+      /* ---- 道具赛：道具箱/抽取/油污/导弹（帧级更新，物理量级足够） ---- */
+      if (game.items && game.phase === 'race') {
+        game.items.update(rawDt, game.racers, now, (r, type) => {
+          const local = localIds.has(r.id);
+          if (!local) return;
+          if (type === 'get') ui.toast(`获得道具：${ITEM_NAMES[r.item] || r.item}`, true, 1400);
+          else if (type === 'spun') { ui.toast('被打滑了！', false, 1200); audio.hit(0.7); }
+          else if (type === 'shielded') ui.toast('护盾挡下了攻击', true, 1200);
+        });
+      }
+
       if (net.connected && game.mode === MODES.ONLINE) {
         game.netTimer -= rawDt;
         if (game.netTimer <= 0) {
@@ -1280,6 +1359,8 @@ function frame(now) {
   window.__DR__ = {
     mode: game.mode, phase: game.phase, track: game.trackId,
     laps: game.laps, lap: me ? me.lap : 0,
+    format: game.format,
+    items: game.items ? game.items.snapshot(me) : null,
     kmh: me ? Math.round(Math.abs(me.vF) * 3.6) : 0,
     score: me ? me.score : 0,
     vF: me ? me.vF : 0, vL: me ? me.vL : 0,
@@ -1356,6 +1437,7 @@ function stepAll(dt, controlAllowed) {
     if (driver && controlAllowed) {
       const gap = humanLeader - racerDistance(game.track, r);
       driver.update(r, dt, { racers: game.racers, gapToHuman: gap });
+      if (game.items) game.items.aiThink(r, dt, game.racers);
     } else if (!controlAllowed) {
       for (const k in r.input) r.input[k] = false;
     }

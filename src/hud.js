@@ -4,6 +4,7 @@
  * =========================================================================*/
 
 import { ACHIEVEMENTS, PAINTS, TRACKS, TRACK_ORDER, AI_LEVELS, STORAGE } from './config.js';
+import { ITEM_ICONS, ITEM_NAMES, ITEM_SEQ } from './items.js';
 import { fmtTime } from './util.js';
 
 const $ = (id) => document.getElementById(id);
@@ -62,6 +63,8 @@ export class UI {
       splitHud: $('split-hud'),
       speedlines: $('speedlines'), flash: $('flash'),
       fatal: $('fatal'),
+      itemSlot: $('item-slot'), itemIcon: $('item-icon'), itemKey: $('item-key'),
+      sp1Item: $('sp1-item'), sp2Item: $('sp2-item'),
       trackList: $('track-list'), paintList: $('paint-list'), nameInput: $('name-input'),
       menuFoot: $('menu-foot'),
       roomCode: $('room-code'), playerList: $('player-list'),
@@ -80,7 +83,7 @@ export class UI {
     this.bannerTimer = 0;
     this.toastTimer = 0;
     this.state = {
-      mode: 'solo', track: 'coast', level: 'normal', laps: 3,
+      mode: 'solo', track: 'coast', level: 'normal', laps: 3, format: 'classic',
       name: '', paint: 0,
     };
     this.split = false;
@@ -152,6 +155,7 @@ export class UI {
     syncSeg($('mode-seg'), 'mode', this.state.mode);
     syncSeg($('level-seg'), 'level', this.state.level);
     syncSeg($('laps-seg'), 'laps', this.state.laps);
+    syncSeg($('format-seg'), 'format', this.state.format);
     this.el.levelSeg = $('level-seg');
 
     /* 涂装 */
@@ -258,6 +262,44 @@ export class UI {
     this.el.driftbox.classList.remove('on');
     this.el.toast.classList.remove('on', 'info');
     this.el.achstack.innerHTML = '';
+    this.renderItemSlot(this.el.itemSlot, null);
+    this.renderItemSlot(this.el.sp1Item, null);
+    this.renderItemSlot(this.el.sp2Item, null);
+  }
+
+  /** 道具赛开关：隐藏/显示道具槽 */
+  setItemMode(on) {
+    this.el.itemSlot.classList.toggle('hidden', !on);
+    this.el.sp1Item.classList.toggle('hidden', !on);
+    this.el.sp2Item.classList.toggle('hidden', !on);
+    if (!on) {
+      this.renderItemSlot(this.el.itemSlot, null);
+      this.renderItemSlot(this.el.sp1Item, null);
+      this.renderItemSlot(this.el.sp2Item, null);
+    }
+  }
+
+  /** 单个道具槽：抽取滚动动画 → 定格 → 空槽 */
+  renderItemSlot(el, r) {
+    if (!el) return;
+    const ic = el.querySelector('.ic');
+    if (!r || (!r.item && !(r.itemRollT > 0))) {
+      el.classList.remove('rolling', 'has');
+      if (ic) ic.textContent = '';
+      return;
+    }
+    if (r.itemRollT > 0) {
+      el.classList.add('rolling');
+      el.classList.remove('has');
+      const ic2 = ITEM_ICONS[ITEM_SEQ[(performance.now() / 90 | 0) % ITEM_SEQ.length]];
+      if (ic) ic.textContent = ic2;
+      el.title = '抽取中…';
+    } else {
+      el.classList.add('has');
+      el.classList.remove('rolling');
+      if (ic) ic.textContent = ITEM_ICONS[r.item] || '?';
+      el.title = `${ITEM_NAMES[r.item] || r.item} · 点击/按键使用`;
+    }
   }
 
   updateRaceHud(r, totalLaps, bestLap) {
@@ -282,6 +324,7 @@ export class UI {
     } else {
       this.el.driftbox.classList.remove('on');
     }
+    this.renderItemSlot(this.el.itemSlot, r);
   }
 
   updateSplitHud(r1, r2, totalLaps, ranks) {
@@ -292,6 +335,8 @@ export class UI {
       $('sp' + n + '-rank').textContent = `${r.rank} / ${ranks}`;
     };
     set(1, r1); set(2, r2);
+    this.renderItemSlot(this.el.sp1Item, r1);
+    this.renderItemSlot(this.el.sp2Item, r2);
   }
 
   /** 名次榜（最多显示 8 行，自己高亮） */
@@ -509,9 +554,44 @@ export class UI {
         this.cb.onPrefs && this.cb.onPrefs(this.state);
       });
     };
-    segClick('mode-seg', 'mode', 'mode');
     segClick('level-seg', 'level', 'level');
     segClick('laps-seg', 'laps', 'laps');
+    /* 模式：联机不支持道具赛，切到联机时道具赛自动回落竞速 */
+    $('mode-seg').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || !b.dataset.mode) return;
+      this.state.mode = b.dataset.mode;
+      $('mode-seg').querySelectorAll('button').forEach((x) =>
+        x.classList.toggle('on', x === b));
+      if (this.state.mode === 'online' && this.state.format === 'item') {
+        this.state.format = 'classic';
+        $('format-seg').querySelectorAll('button').forEach((x) =>
+          x.classList.toggle('on', x.dataset.format === 'classic'));
+        this.toast('联机暂为竞速赛制', true, 1400);
+      }
+      this.cb.onPrefs && this.cb.onPrefs(this.state);
+    });
+    /* 赛制：联机暂不支持道具赛，选中即时拦截 */
+    $('format-seg').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || !b.dataset.format) return;
+      if (this.state.mode === 'online' && b.dataset.format === 'item') {
+        this.toast('道具赛暂不支持联机，先用竞速吧', false);
+        return;
+      }
+      this.state.format = b.dataset.format;
+      $('format-seg').querySelectorAll('button').forEach((x) =>
+        x.classList.toggle('on', x === b));
+      this.cb.onPrefs && this.cb.onPrefs(this.state);
+    });
+
+    /* 道具槽点击 = 使用道具（触屏玩家的唯一使用入口） */
+    this.el.itemSlot.addEventListener('click', () =>
+      this.cb.onUseItem && this.cb.onUseItem(1));
+    this.el.sp1Item.addEventListener('click', () =>
+      this.cb.onUseItem && this.cb.onUseItem(1));
+    this.el.sp2Item.addEventListener('click', () =>
+      this.cb.onUseItem && this.cb.onUseItem(2));
 
     /* 分步导航 */
     $('btn-prev').addEventListener('click', () => this.setMenuStep(this.menuStep - 1));

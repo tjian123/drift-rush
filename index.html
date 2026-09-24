@@ -52,18 +52,26 @@
   <div><span id="driftnum">0</span><span id="driftmult">×1.0</span></div>
 </div>
 
+<!-- 道具槽（仅道具赛显示，点按 = 使用） -->
+<div class="hud panel" id="item-slot" title="使用道具">
+  <span class="ic" id="item-icon"></span>
+  <small id="item-key">E</small>
+</div>
+
 <!-- 分屏 HUD -->
 <div id="split-hud" class="hidden">
   <div class="splitbox top">
     <div class="sp"><span id="sp1-kmh">0</span><small>KM/H</small></div>
     <div class="lp">P1 · <b id="sp1-lap">1/3</b> · <span id="sp1-time">0:00.00</span><br>
       <span id="sp1-rank">1 / 2</span></div>
+    <div class="sp-item" id="sp1-item" title="使用道具（右Shift）"><span class="ic"></span></div>
   </div>
   <div class="splitdivider"></div>
   <div class="splitbox bottom">
     <div class="sp"><span id="sp2-kmh">0</span><small>KM/H</small></div>
     <div class="lp">P2 · <b id="sp2-lap">1/3</b> · <span id="sp2-time">0:00.00</span><br>
       <span id="sp2-rank">2 / 2</span></div>
+    <div class="sp-item" id="sp2-item" title="使用道具（右Shift）"><span class="ic"></span></div>
   </div>
 </div>
 
@@ -138,6 +146,13 @@
 
   <!-- 第 2 步：赛制 -->
   <div class="steppane hide" id="step-format">
+    <div class="section" id="sec-format">
+      <div class="label">赛制</div>
+      <div class="seg" id="format-seg">
+        <button data-format="classic">竞速<small>纯比圈速与名次</small></button>
+        <button data-format="item">道具<small>道具箱 · 氮气/护盾/油污/导弹</small></button>
+      </div>
+    </div>
     <div class="section" id="sec-mode">
       <div class="label">模式</div>
       <div class="seg" id="mode-seg">

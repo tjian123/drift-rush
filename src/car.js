@@ -114,6 +114,10 @@ export function makeRacer(opts) {
     score: 0, driftPending: 0, driftMult: 1, driftTimer: 0, drifting: false,
     maxSpeedSeen: 0, offroadTime: 0, wallTime: 0, noBrakeLap: true, cleanLap: true,
 
+    /* 道具赛：当前道具 / 抽取滚动 / 氮气 / 护盾 / 打滑（竞速赛恒为空/0） */
+    item: null, itemRollT: 0, itemRollFinal: null, itemCd: 0,
+    boostT: 0, shieldT: 0, spinT: 0,
+
     /* 网络 */
     remoteTarget: null, remotePrev: null,
 
@@ -161,9 +165,15 @@ export function stepRacer(racer, dt, ctx) {
   const speedAbs = Math.abs(racer.vF);
   const speedNorm = clamp(speedAbs / CFG.MAX_SPEED, 0, 1);
 
-  /* ---- 动力：油门 / 刹车 / 倒车 ---- */
-  const gas = controllable && input.gas;
-  const brake = controllable && input.brake;
+  /* ---- 道具状态计时（竞速赛这些值恒为 0，不进分支） ---- */
+  const spinning = racer.spinT > 0;
+  if (spinning) racer.spinT -= dt;
+  if (racer.boostT > 0) racer.boostT -= dt;
+  if (racer.shieldT > 0) racer.shieldT -= dt;
+
+  /* ---- 动力：油门 / 刹车 / 倒车（打滑时油门刹车全部失效） ---- */
+  const gas = controllable && input.gas && !spinning;
+  const brake = controllable && input.brake && !spinning;
   if (gas) {
     racer.vF += CFG.ENGINE * (1 - 0.72 * speedNorm) * dt;
   }
@@ -172,7 +182,12 @@ export function stepRacer(racer, dt, ctx) {
     if (racer.vF > 0.6) racer.vF -= CFG.BRAKE * dt;
     else racer.vF -= CFG.REV_ACC * dt;
   }
-  racer.vF = clamp(racer.vF, -CFG.MAX_REV, CFG.MAX_SPEED * 1.02);
+  /* 氮气：额外推力 + 极速放宽 */
+  if (racer.boostT > 0) {
+    racer.vF += CFG.ENGINE * 1.45 * (1 - 0.55 * speedNorm) * dt;
+  }
+  const vMax = CFG.MAX_SPEED * (racer.boostT > 0 ? 1.2 : 1);
+  racer.vF = clamp(racer.vF, -CFG.MAX_REV, vMax * 1.02);
   racer.maxSpeedSeen = Math.max(racer.maxSpeedSeen, speedAbs);
 
   /* ---- 阻力 ---- */
@@ -192,6 +207,8 @@ export function stepRacer(racer, dt, ctx) {
   const targetYaw = steer * CFG.MAX_YAW * speedFactor * highSpeedDamp * handMul
     * (racer.vF < -0.3 ? -1 : 1);
   racer.yawRate = damp(racer.yawRate, targetYaw, CFG.YAW_DAMP, dt);
+  /* 打滑：夺走方向盘，车身定轴旋转（约 1.25s 转一圈多） */
+  if (spinning) racer.yawRate = damp(racer.yawRate, 5.6, 10, dt);
   racer.heading += racer.yawRate * dt;
 
   /* ---- 抓地力 ---- */

@@ -262,6 +262,29 @@ export const MODES = {
   ONLINE: 'online',       // 在线联机
 };
 
+/** 赛制：竞速比圈速名次；道具赛有道具箱（联机暂不支持道具） */
+export const FORMATS = {
+  CLASSIC: 'classic',
+  ITEM: 'item',
+};
+
+export const ITEMS_CFG = {
+  BOX_GROUPS: 8,          // 道具箱组数（沿赛道均布，跳过发车区）
+  BOX_LANES: [-5.5, 0, 5.5],
+  BOX_RESPAWN: 5,         // 道具箱被吃后再生秒数
+  PICKUP_R: 2.6,          // 吃箱半径
+  ROLL_TIME: 0.9,         // 抽道具滚动时长（秒）
+  BOOST_T: 2.2,           // 氮气持续
+  BOOST_ACC: 1.45,        // 氮气额外推力（×ENGINE）
+  BOOST_MAX_MUL: 1.2,     // 氮气时极速放宽
+  SHIELD_T: 6,            // 护盾持续
+  OIL_TTL: 30,            // 油污存留
+  OIL_R: 1.9,             // 触油半径
+  MISSILE_SPEED: 56,      // 导弹沿赛道速度 m/s
+  MISSILE_TTL: 9,
+  SPIN_T: 1.25,           // 打滑时长
+};
+
 export const STORAGE = {
   BEST: 'drift-rush-best-v2',
   ACH: 'drift-rush-ach-v2',

@@ -105,6 +105,30 @@ canvas { display: block; }
   font-variant-numeric: tabular-nums; }
 #driftmult { font-size: 21px; font-weight: 800; color: var(--amber2); margin-left: 8px; }
 
+/* ---------- 道具槽（仅道具赛显示；点按 = 使用） ---------- */
+#item-slot { left: 24px; bottom: 22px; width: 76px; height: 76px; display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+#item-slot .ic { font-size: 34px; line-height: 1.1; min-height: 38px; }
+#item-slot small { font-size: 10px; color: var(--dim); letter-spacing: 2px; }
+#item-slot.has { border-color: var(--amber); box-shadow: 0 0 18px rgba(255,175,60,.35); }
+#item-slot.has small { color: var(--amber); }
+#item-slot.rolling { animation: itemroll .5s ease-in-out infinite; }
+#item-slot.rolling .ic { filter: blur(0.4px); }
+@keyframes itemroll {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+/* 分屏的小道具槽（叠在各自半屏的角落） */
+.sp-item { position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  width: 52px; height: 52px; border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(10,14,26,.72); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none; }
+.sp-item .ic { font-size: 24px; }
+.sp-item.has { border-color: var(--amber); box-shadow: 0 0 12px rgba(255,175,60,.4); }
+.sp-item.rolling { animation: itemroll .5s ease-in-out infinite; }
+
 /* ---------- 倒计时 / 提示 ---------- */
 #countdown { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center;
   justify-content: center; pointer-events: none; }
