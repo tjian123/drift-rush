@@ -1,0 +1,19 @@
+{
+  "name": "drift-rush",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DRIFT RUSH - 低多边形漂移竞速（单人/AI/分屏/联机 + 云服务战绩）",
+  "scripts": {
+    "start": "node server/index.js",
+    "check": "node tools/check_track.mjs",
+    "verify": "node tools/verify.mjs A B C D",
+    "verify:mobile": "node tools/verify-mobile.mjs",
+    "verify:cloud": "node tools/verify-cloud.mjs",
+    "verify:signup": "node tools/verify-signup.mjs"
+  },
+  "notes": {
+    "verify:signup": "真实账号闭环。DR_PHASE=signup（默认）走邮箱验证码注册；DR_PHASE=login 用已注册账号密码登录，免验证码复跑成绩上传/上榜环节（零依赖，环境变量请直接在 shell 里设置）"
+  },
+  "dependencies": {}
+}

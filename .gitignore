@@ -1,0 +1,19 @@
+# ---- 依赖 ----
+node_modules/
+
+# ---- 验收脚本的一次性产物 ----
+# 无头浏览器截图（tools/shot-*.png）与失败现场（_signup-fail.png）都是
+# 每次跑验收重新生成的证据，不进版本库；要留证时手动另存。
+tools/*.png
+
+# ---- 运行期产物 ----
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# ---- 本地临时 / 编辑器 ----
+.tmp/
+*.swp
+.idea/
+.vscode/

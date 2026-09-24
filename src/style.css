@@ -1,0 +1,597 @@
+/* ===========================================================================
+ * style.css — DRIFT RUSH 全部界面样式
+ * 设计语言：深色玻璃拟态 HUD + 琥珀色强调 + 等宽数字
+ * =========================================================================*/
+
+:root {
+  --bg: #080b14;
+  --panel: rgba(12, 16, 28, 0.52);
+  --panel-solid: rgba(10, 13, 24, 0.92);
+  --line: rgba(255, 255, 255, 0.10);
+  --line-strong: rgba(255, 255, 255, 0.20);
+  --text: #f2f5ff;
+  --dim: #9fb0cd;
+  --dim2: #6c7d9c;
+  --amber: #ffd479;
+  --amber2: #ff9a5c;
+  --green: #8ee6b0;
+  --red: #ff6b6b;
+  --blue: #7fb2ff;
+  --font: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans SC", system-ui, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+  font-family: var(--font); -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+canvas { display: block; }
+#app { position: fixed; inset: 0; }
+
+/* ---------- 全屏特效层 ---------- */
+#vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 5; mix-blend-mode: multiply;
+  background: radial-gradient(ellipse 78% 70% at 50% 46%,
+    rgba(0,0,0,0) 40%, rgba(0,0,0,.34) 78%, rgba(0,0,0,.62) 100%);
+}
+#speedlines {
+  position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0;
+  background: radial-gradient(ellipse 42% 38% at 50% 50%,
+    rgba(0,0,0,0) 55%, rgba(255,255,255,.16) 100%);
+}
+#flash { position: fixed; inset: 0; pointer-events: none; z-index: 7; background: #fff; opacity: 0; }
+
+/* ---------- 通用 HUD ---------- */
+.hud { position: fixed; z-index: 10; pointer-events: none; color: var(--text);
+  text-shadow: 0 2px 10px rgba(0,0,0,.65); }
+.hidden { display: none !important; }
+
+.panel {
+  background: var(--panel); backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 14px;
+}
+
+/* ---------- 圈速面板 ---------- */
+#lapbox { left: 24px; top: 20px; padding: 13px 17px 11px; min-width: 200px; }
+#lapbox .row { display: flex; justify-content: space-between; gap: 20px;
+  font-size: 11px; letter-spacing: 1.2px; color: var(--dim); margin-bottom: 3px; }
+#curtime { font-size: 34px; font-weight: 800; letter-spacing: -1.5px;
+  font-variant-numeric: tabular-nums; line-height: 1.05; }
+#lapbox .sub { display: flex; justify-content: space-between; gap: 14px; font-size: 12px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+#lapbox .sub b { color: var(--green); font-variant-numeric: tabular-nums; font-weight: 700; }
+#lapbox .sub i { font-style: normal; color: var(--dim2); font-size: 10px; letter-spacing: 1px; }
+
+/* ---------- 速度表 ---------- */
+#speedbox { right: 24px; bottom: 22px; text-align: right; }
+#speednum { font-size: 70px; font-weight: 800; line-height: .86; letter-spacing: -3px;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #fff 20%, #9fd0ff 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 12px rgba(0,0,0,.6)); }
+#speedunit { font-size: 11px; letter-spacing: 5px; color: var(--dim2); margin-top: 2px; }
+#gear { position: absolute; left: -54px; top: 6px; font-size: 28px; font-weight: 800; color: var(--amber); }
+#rpmbar { position: absolute; left: 0; right: 0; bottom: -12px; height: 4px;
+  border-radius: 2px; background: rgba(255,255,255,.14); overflow: hidden; }
+#rpmfill { height: 100%; width: 0%; background: linear-gradient(90deg,#39d98a,#ffd479 62%,#ff4d4d 88%); }
+
+/* ---------- 小地图 ---------- */
+#mapwrap { right: 24px; top: 20px; width: 150px; height: 150px; overflow: hidden; }
+#minimap { width: 100%; height: 100%; display: block; }
+
+/* ---------- 名次榜 ---------- */
+#ranks { left: 24px; top: 158px; padding: 10px 12px; min-width: 176px; font-size: 12px; }
+#ranks h4 { font-size: 10px; letter-spacing: 2px; color: var(--dim2); font-weight: 600;
+  margin-bottom: 7px; }
+.rank-row { display: flex; align-items: center; gap: 7px; padding: 3px 0;
+  font-variant-numeric: tabular-nums; }
+.rank-row .pos { width: 16px; color: var(--dim2); font-size: 11px; }
+.rank-row .dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.rank-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row .tm { color: var(--dim); font-size: 11px; }
+.rank-row.me { color: var(--amber); font-weight: 700; }
+.rank-row.me .pos { color: var(--amber); }
+
+/* ---------- 漂移积分 ---------- */
+#driftbox { left: 50%; top: 15%; transform: translateX(-50%) scale(.82); opacity: 0;
+  text-align: center; transition: opacity .12s linear, transform .12s ease-out; }
+#driftbox.on { opacity: 1; transform: translateX(-50%) scale(1); }
+#driftlabel { font-size: 14px; letter-spacing: 7px; color: var(--amber); font-weight: 700; }
+#driftnum { font-size: 44px; font-weight: 800; letter-spacing: -1px;
+  font-variant-numeric: tabular-nums; }
+#driftmult { font-size: 21px; font-weight: 800; color: var(--amber2); margin-left: 8px; }
+
+/* ---------- 倒计时 / 提示 ---------- */
+#countdown { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center;
+  justify-content: center; pointer-events: none; }
+#cdnum { font-size: 180px; font-weight: 900; letter-spacing: -8px; opacity: 0;
+  text-shadow: 0 8px 40px rgba(0,0,0,.7); }
+#cdnum.pop { animation: cdpop .78s cubic-bezier(.16,.9,.3,1) forwards; }
+@keyframes cdpop {
+  0% { opacity: 0; transform: scale(2.2); filter: blur(8px); }
+  22% { opacity: 1; transform: scale(1); filter: blur(0); }
+  72% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.86); }
+}
+#toast { position: fixed; left: 50%; bottom: 23%; transform: translateX(-50%); z-index: 14;
+  padding: 9px 20px; border-radius: 999px; font-size: 13px; letter-spacing: 1px;
+  background: rgba(255,80,80,.20); border: 1px solid rgba(255,110,110,.45); color: #ffd9d9;
+  opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
+#toast.on { opacity: 1; }
+#toast.info { background: rgba(120,180,255,.18); border-color: rgba(140,190,255,.45); color: #dbe9ff; }
+#banner { position: fixed; left: 50%; top: 28%; transform: translateX(-50%); z-index: 15;
+  text-align: center; opacity: 0; pointer-events: none; }
+#banner.on { animation: cdpop 1.6s ease-out forwards; }
+#banner .big { font-size: 42px; font-weight: 900; color: var(--green); letter-spacing: -1px; }
+#banner .sm { font-size: 12px; letter-spacing: 4px; color: #cfe4ff; opacity: .85; }
+
+/* ---------- 成就弹窗 ---------- */
+#achstack { position: fixed; right: 24px; bottom: 130px; z-index: 25; display: flex;
+  flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+.achcard { display: flex; align-items: center; gap: 11px; padding: 10px 15px 10px 11px;
+  background: var(--panel-solid); border: 1px solid rgba(255,212,121,.4);
+  border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  animation: slideIn .38s cubic-bezier(.16,.9,.3,1); max-width: 300px; }
+.achcard.out { animation: slideOut .34s ease-in forwards; }
+@keyframes slideIn { from { opacity: 0; transform: translateX(40px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes slideOut { to { opacity: 0; transform: translateX(30px) scale(.96); } }
+.achicon { width: 34px; height: 34px; border-radius: 9px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; font-size: 17px;
+  background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #1a1206; font-weight: 900; }
+.achtxt .t { font-size: 13px; font-weight: 700; }
+.achtxt .d { font-size: 11px; color: var(--dim); margin-top: 2px; }
+.achtxt .l { font-size: 9px; letter-spacing: 2px; color: var(--amber); margin-bottom: 2px; }
+
+/* ---------- 联机状态 ---------- */
+#netstat { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 16;
+  padding: 5px 13px; border-radius: 999px; font-size: 11px; letter-spacing: 1px;
+  background: rgba(10,14,26,.6); border: 1px solid var(--line); color: var(--dim);
+  display: flex; align-items: center; gap: 8px; }
+#netstat .led { width: 7px; height: 7px; border-radius: 50%; background: var(--dim2); }
+#netstat.online .led { background: var(--green); box-shadow: 0 0 8px var(--green); }
+#netstat.warn .led { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+#netstat.err .led { background: var(--red); box-shadow: 0 0 8px var(--red); }
+#netstat b { color: var(--text); font-weight: 700; }
+
+/* ---------- 全屏界面（菜单 / 大厅 / 结算 / 暂停） ---------- */
+.screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; overflow-y: auto;
+  background: radial-gradient(ellipse 62% 62% at 50% 50%, rgba(12,16,30,.72), rgba(5,7,14,.95));
+  backdrop-filter: blur(4px); padding: 24px; }
+.screen.hide { display: none; }
+
+.logo { font-size: clamp(38px, 8.4vw, 86px); font-weight: 900; letter-spacing: -4px;
+  line-height: .92; text-align: center;
+  background: linear-gradient(105deg, #fff 6%, var(--amber) 38%, var(--amber2) 66%, #b06bff 96%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 10px 34px rgba(255,120,80,.24)); }
+.tagline { margin-top: 8px; font-size: 11px; letter-spacing: 8px; color: var(--dim2);
+  text-align: center; }
+
+.section { width: min(880px, 96vw); margin-top: 22px; }
+.section > .label { font-size: 10px; letter-spacing: 2.5px; color: var(--dim2);
+  margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.section > .label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+.seg { display: flex; gap: 8px; }
+.seg button {
+  flex: 1; padding: 13px 10px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--dim); font-family: inherit; font-size: 13px;
+  font-weight: 700; letter-spacing: 1px; cursor: pointer; transition: all .16s;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.seg button small { font-size: 10px; font-weight: 400; letter-spacing: 0; color: var(--dim2); }
+.seg button:hover { border-color: var(--line-strong); color: var(--text); transform: translateY(-1px); }
+.seg button.on { background: linear-gradient(150deg, rgba(255,212,121,.20), rgba(255,154,92,.12));
+  border-color: rgba(255,212,121,.6); color: var(--amber); }
+.seg button.on small { color: rgba(255,212,121,.75); }
+
+.tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.trackcard { padding: 11px; border-radius: 13px; border: 1px solid var(--line);
+  background: var(--panel); cursor: pointer; transition: all .16s; display: flex; gap: 11px;
+  align-items: center; font-family: inherit; color: var(--text); text-align: left; }
+.trackcard:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.trackcard.on { border-color: rgba(255,212,121,.6);
+  background: linear-gradient(150deg, rgba(255,212,121,.16), rgba(255,154,92,.08)); }
+.trackcard canvas { width: 62px; height: 62px; flex: 0 0 auto; border-radius: 9px;
+  background: rgba(0,0,0,.28); }
+.trackcard .nm { font-size: 14px; font-weight: 700; }
+.trackcard .ds { font-size: 10.5px; color: var(--dim2); margin-top: 3px; line-height: 1.45; }
+.trackcard .bs { font-size: 10px; color: var(--green); margin-top: 4px;
+  font-variant-numeric: tabular-nums; }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field input {
+  padding: 11px 13px; border-radius: 11px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); font-family: inherit; font-size: 14px;
+  letter-spacing: 1px; outline: none; width: 100%;
+}
+.field input:focus { border-color: rgba(255,212,121,.6); }
+.field input.code { letter-spacing: 10px; text-align: center; font-size: 24px; font-weight: 800;
+  text-transform: uppercase; }
+
+.paints { display: flex; gap: 7px; flex-wrap: wrap; }
+.paint { width: 32px; height: 32px; border-radius: 9px; cursor: pointer;
+  border: 2px solid transparent; transition: transform .14s; }
+.paint:hover { transform: scale(1.08); }
+.paint.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.16); }
+
+.btn { padding: 14px 34px; border-radius: 999px; border: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 800; letter-spacing: 3px;
+  background: linear-gradient(100deg, var(--amber), var(--amber2)); color: #17110a;
+  box-shadow: 0 12px 34px rgba(255,150,90,.28); transition: transform .16s, box-shadow .16s; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 16px 42px rgba(255,150,90,.42); }
+.btn:active { transform: translateY(0) scale(.99); }
+.btn.ghost { background: transparent; border: 1px solid var(--line-strong); color: var(--text);
+  box-shadow: none; font-weight: 700; letter-spacing: 2px; padding: 12px 26px; }
+.btn.ghost:hover { border-color: var(--amber); color: var(--amber); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+.center { display: flex; justify-content: center; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
+.foot { margin-top: 18px; font-size: 11px; color: var(--dim2); text-align: center; line-height: 1.8; }
+.foot b { color: var(--dim); }
+
+/* ---------- 联机房间 ---------- */
+.roomcode { font-size: 58px; font-weight: 900; letter-spacing: 16px; text-align: center;
+  color: var(--amber); text-indent: 16px; }
+.hint { font-size: 11px; color: var(--dim2); text-align: center; margin-top: 6px; }
+.playerlist { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+.plrow { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); font-size: 13px; }
+.plrow .dot { width: 11px; height: 11px; border-radius: 3px; }
+.plrow .tag { font-size: 9px; letter-spacing: 1px; padding: 2px 7px; border-radius: 999px;
+  background: rgba(255,212,121,.16); color: var(--amber); }
+.plrow .tag.host { background: rgba(142,230,176,.16); color: var(--green); }
+
+/* ---------- 结算 ---------- */
+.result-table { width: 100%; border-collapse: collapse; font-size: 13px;
+  font-variant-numeric: tabular-nums; }
+.result-table th { font-size: 10px; letter-spacing: 1.6px; color: var(--dim2);
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.result-table td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.result-table tr.me td { color: var(--amber); font-weight: 700;
+  background: rgba(255,212,121,.07); }
+.result-table .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+  margin-right: 8px; vertical-align: middle; }
+.result-table .pos { font-weight: 800; }
+.result-table .p1 { color: var(--amber); }
+
+.achgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 8px; }
+.achitem { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 12px; }
+.achitem.locked { opacity: .38; }
+.achitem .ic { width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+  background: linear-gradient(135deg, var(--amber), var(--amber2)); color: #1a1206; font-weight: 900; }
+.achitem.locked .ic { background: rgba(255,255,255,.10); color: var(--dim2); }
+.achitem .t { font-weight: 700; }
+.achitem .d { font-size: 10px; color: var(--dim2); margin-top: 2px; }
+
+/* ---------- 静态提示（HUD 底部操作提示） ---------- */
+#keys { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 9;
+  display: flex; gap: 14px; font-size: 10.5px; color: var(--dim2); pointer-events: none;
+  white-space: nowrap; }
+kbd { display: inline-block; min-width: 20px; padding: 2px 6px; margin-right: 3px;
+  border-radius: 5px; background: rgba(255,255,255,.09); border: 1px solid var(--line);
+  border-bottom-width: 2px; font-size: 10px; font-family: inherit; color: var(--dim); }
+
+/* ---------- 分屏 HUD ---------- */
+#split-hud { position: fixed; inset: 0; z-index: 11; pointer-events: none; }
+.splitbox { position: absolute; left: 0; right: 0; padding: 12px 20px;
+  display: flex; justify-content: space-between; align-items: flex-start; }
+.splitbox.top { top: 0; }
+.splitbox.bottom { bottom: 0; align-items: flex-end; }
+.splitbox .sp { font-size: 38px; font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: -2px; }
+.splitbox .sp small { font-size: 10px; letter-spacing: 3px; color: var(--dim2); margin-left: 5px; }
+.splitbox .lp { text-align: right; font-size: 12px; color: var(--dim); line-height: 1.7;
+  font-variant-numeric: tabular-nums; }
+.splitbox .lp b { color: var(--text); font-size: 15px; }
+.splitdivider { position: absolute; left: 0; right: 0; top: 50%; height: 2px;
+  background: rgba(0,0,0,.55); }
+
+/* ===========================================================================
+ * 触屏操控
+ * 布局：左半屏转向区（方向盘）+ 右下踏板簇。
+ * 之所以用 pointer-events 只在子区域开启，是为了让菜单/HUD 的点击不被吃掉。
+ * =========================================================================*/
+#touch { position: fixed; inset: 0; z-index: 12; pointer-events: none; display: none;
+  --r: 64px;   /* 方向盘基准半径，由 JS 按视口尺寸写入；自定义属性会继承给子元素 */ }
+#touch.show { display: block; }
+
+/* ---------- 转向区 ---------- */
+.steerzone {
+  position: absolute; left: 0; top: 0; width: 50%; height: 100%;
+  pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none;
+}
+#touch.hand-left .steerzone { left: auto; right: 0; }
+
+/* 方向盘：--r 由 JS 按屏幕尺寸写入，是「打满」的半径基准。
+   定位方式：left/bottom 指的是**圆心**（靠 translate(-50%,50%) 实现），
+   这样浮动到手指位置时只需改 left/top 两个值。
+   left 用 max() 兜底：小屏上 22% 可能不足以容纳整圆，会切出屏幕外。 */
+.steerring {
+  position: absolute;
+  left: max(22%, calc(var(--r) + 10px));
+  bottom: calc(max(26px, env(safe-area-inset-bottom)) + var(--r));
+  width: calc(var(--r) * 2); height: calc(var(--r) * 2);
+  border-radius: 50%; transform: translate(-50%, 50%);
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity .18s ease;
+  opacity: .62;
+}
+/* 浮动：按在圈外时盘子吸附到手指位置 */
+.steerring.floating { transition: none; }
+.steerring.active { opacity: 1; }
+.steerring.locking .ring-track { border-color: rgba(255,212,121,.72); box-shadow: 0 0 18px rgba(255,212,121,.22) inset; }
+
+.ring-track {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px dashed rgba(255,255,255,.26);
+  background: radial-gradient(circle, rgba(255,255,255,.05) 0%, rgba(255,255,255,.02) 62%, transparent 70%);
+  backdrop-filter: blur(3px); transition: border-color .16s ease, box-shadow .16s ease;
+}
+.ring-cross {
+  position: absolute; left: 50%; top: 50%; width: 22px; height: 1px;
+  margin: -0.5px 0 0 -11px; background: rgba(255,255,255,.22);
+  box-shadow: 0 -0.5px 0 rgba(255,255,255,.22);
+}
+.ring-cross::after {
+  content: ''; position: absolute; left: 10.5px; top: -11px; width: 1px; height: 22px;
+  background: rgba(255,255,255,.22);
+}
+.ring-knob {
+  position: relative; width: 54px; height: 54px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, rgba(255,255,255,.34), rgba(255,255,255,.10) 58%, rgba(255,255,255,.04));
+  border: 1.5px solid rgba(255,255,255,.42);
+  box-shadow: 0 3px 14px rgba(0,0,0,.42);
+  display: flex; align-items: center; justify-content: center;
+  will-change: transform;
+}
+.ring-knob::after {
+  content: '⇄'; font-size: 15px; color: rgba(255,255,255,.62); letter-spacing: -2px;
+}
+.steerring.active .ring-knob {
+  border-color: var(--amber); background: radial-gradient(circle at 34% 30%, rgba(255,212,121,.5), rgba(255,154,92,.22) 60%, rgba(255,255,255,.05));
+}
+.steerhint {
+  position: absolute;
+  left: max(22%, calc(var(--r) + 10px));
+  bottom: max(4px, env(safe-area-inset-bottom));
+  transform: translateX(-50%); font-size: 10px; letter-spacing: 1px; color: var(--dim2);
+  white-space: nowrap; transition: opacity .2s ease;
+}
+.steerhint.hide { opacity: 0; }
+#touch.hand-left .steerhint { left: auto; right: 22%; transform: translateX(50%); }
+
+/* ---------- 踏板簇 ---------- */
+.pedalzone {
+  position: absolute; right: 0; bottom: 0; padding: 0 max(16px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) 0;
+  display: grid; grid-template-columns: auto auto; gap: 10px;
+  align-items: end; justify-items: end;
+  pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none;
+}
+#touch.hand-left .pedalzone { right: auto; left: 0;
+  padding: 0 0 max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  justify-items: start; }
+
+.tbtn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 50%; color: #fff; background: rgba(255,255,255,.11);
+  border: 1.5px solid rgba(255,255,255,.24); backdrop-filter: blur(7px);
+  transition: transform .07s ease, background .09s ease, border-color .09s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.tbtn b { font-size: 13px; font-weight: 800; letter-spacing: 1px; }
+.tbtn small { font-size: 9px; letter-spacing: 1px; color: rgba(255,255,255,.55); margin-top: 1px; }
+.tbtn.on { transform: scale(.94); }
+
+.tbtn.pedal.gas { grid-column: 2; grid-row: 2; width: 92px; height: 92px; }
+.tbtn.pedal.brake { grid-column: 1; grid-row: 2; width: 76px; height: 76px; }
+.tbtn.pedal.hand { grid-column: 2; grid-row: 1; width: 68px; height: 68px; margin-right: 12px; }
+
+.tbtn.pedal.gas.on { background: rgba(142,230,176,.34); border-color: var(--green);
+  box-shadow: 0 0 22px rgba(142,230,176,.28); }
+.tbtn.pedal.brake.on { background: rgba(255,107,107,.34); border-color: var(--red);
+  box-shadow: 0 0 22px rgba(255,107,107,.26); }
+.tbtn.pedal.hand.on { background: rgba(255,212,121,.34); border-color: var(--amber);
+  box-shadow: 0 0 22px rgba(255,212,121,.28); }
+/* 自动油门开着时，油门踏板降级为「状态提示」而不是必须一直按住的东西 */
+#touch.auto-gas .tbtn.pedal.gas { border-style: dashed; opacity: .72; }
+
+#tpause {
+  position: absolute; right: max(16px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top));
+  width: 44px; height: 44px; border-radius: 12px; pointer-events: auto;
+  background: rgba(10,14,26,.55); border: 1px solid var(--line); color: var(--dim);
+  font-size: 12px; font-family: inherit; backdrop-filter: blur(7px); cursor: pointer;
+}
+#touch.hand-left #tpause { right: auto; left: max(16px, env(safe-area-inset-left)); }
+
+/* ---------- 触屏模式下的 HUD 重排 ----------
+   键盘提示条与触控层互斥；速度表、成就卡都要给踏板簇让位。
+   用 body 上的类而不是 #touch 兄弟选择器：这两个 HUD 在 DOM 里位于 #touch 之前。 */
+body.touch-on #keys { display: none !important; }
+body.touch-on #speedbox {
+  right: auto; left: 50%; transform: translateX(-50%) scale(.88);
+  bottom: 16px; transform-origin: center bottom;
+}
+body.touch-on #achstack {
+  right: 16px; bottom: auto; top: 34%; align-items: flex-end;
+}
+body.touch-on.hand-left #speedbox { left: 50%; }
+body.touch-on.hand-left #achstack { right: auto; left: 16px; align-items: flex-start; }
+
+/* ---------- 竖屏提示（只盖在菜单上，比赛时不打扰） ---------- */
+#rotate-hint {
+  position: fixed; inset: 0; z-index: 40; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(6,9,16,.90); backdrop-filter: blur(8px); text-align: center; padding: 24px;
+}
+#rotate-hint.show.over-menu { display: flex; }
+#rotate-hint .ph { font-size: 46px; animation: rotsp 2.4s ease-in-out infinite; }
+#rotate-hint .t1 { font-size: 20px; font-weight: 800; letter-spacing: 2px; margin-top: 8px; }
+#rotate-hint .t2 { font-size: 12px; color: var(--dim); letter-spacing: .5px; }
+@keyframes rotsp { 0%,40% { transform: rotate(0); } 60%,100% { transform: rotate(90deg); } }
+
+/* ---------- 操作设置 ---------- */
+.labnote { font-size: 10px; letter-spacing: 0; color: var(--dim2); font-weight: 400; }
+.ctrlgrid { display: flex; flex-direction: column; gap: 7px; }
+.ctrlrow { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: center;
+  padding: 10px 13px; border-radius: 11px; background: rgba(255,255,255,.03);
+  border: 1px solid var(--line); }
+.ctrlrow .ck { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.ctrlrow .cd2 { font-size: 11px; color: var(--dim2); line-height: 1.55; }
+.ctrlrow kbd { margin-right: 3px; }
+.seg.mini { gap: 6px; flex: 0 0 auto; }
+.seg.mini button { padding: 7px 11px; font-size: 11.5px; letter-spacing: .5px; min-width: 0; }
+.sw { position: relative; width: 48px; height: 27px; border-radius: 999px; cursor: pointer;
+  background: rgba(255,255,255,.10); border: 1px solid var(--line); padding: 0; flex: 0 0 auto; }
+.sw i { position: absolute; left: 3px; top: 50%; width: 19px; height: 19px; margin-top: -9.5px;
+  border-radius: 50%; background: var(--dim); transition: left .16s ease, background .16s ease; }
+.sw[aria-checked="true"] { background: rgba(255,212,121,.24); border-color: rgba(255,212,121,.55); }
+.sw[aria-checked="true"] i { left: 24px; background: var(--amber); }
+
+/* ---------- 错误面板（便于自动化验证捕获） ---------- */
+#fatal { position: fixed; inset: auto 14px 14px 14px; z-index: 99; display: none;
+  background: rgba(120,18,18,.94); border: 1px solid var(--red); border-radius: 10px;
+  padding: 13px 15px; color: #ffe3e3; font-size: 12px; line-height: 1.6;
+  white-space: pre-wrap; max-height: 44vh; overflow: auto; }
+
+/* ===========================================================================
+ * 云服务：账号 / 排行榜
+ * =========================================================================*/
+
+/* ---------- 菜单底部云端状态行 ---------- */
+.cloudline { margin-top: 14px; display: flex; align-items: center; justify-content: center;
+  gap: 8px; font-size: 11px; color: var(--dim); letter-spacing: .5px; }
+.cloudline button { background: none; border: none; color: var(--amber); font-family: inherit;
+  font-size: 11px; font-weight: 700; cursor: pointer; padding: 2px 4px; letter-spacing: .5px; }
+.cloudline button:hover { text-decoration: underline; }
+
+/* ---------- 账号页状态条 ---------- */
+.cloudbar { margin-top: 12px; display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--dim); padding: 6px 14px; border-radius: 999px;
+  background: rgba(10,14,26,.6); border: 1px solid var(--line); }
+.cd { width: 7px; height: 7px; border-radius: 50%; background: var(--dim2); flex: 0 0 auto; }
+.cd.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.cd.wait { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.cd.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+/* ---------- 表单 ---------- */
+.accpane { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.accinput {
+  padding: 13px; border-radius: 11px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); font-family: inherit; font-size: 15px;
+  letter-spacing: 1px; outline: none; width: 100%;
+}
+.accinput:focus { border-color: rgba(255,212,121,.6); box-shadow: 0 0 0 3px rgba(255,212,121,.10); }
+.accinput::placeholder { color: var(--dim2); letter-spacing: 0; }
+.accinput.code { font-size: 22px; font-weight: 800; text-align: center;
+  letter-spacing: 9px; text-indent: 9px; font-variant-numeric: tabular-nums; }
+
+.panehead { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--dim);
+  text-transform: uppercase; }
+
+/* 步骤指示：让「先填邮箱、再输验证码」这件事在界面上是可见的 */
+.steps { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.stp { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--dim2);
+  letter-spacing: .5px; transition: color .18s ease; }
+.stp i { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-style: normal; font-size: 10.5px; font-weight: 800;
+  background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--dim2); }
+.stp.on { color: var(--text); }
+.stp.on i { background: linear-gradient(135deg, var(--amber), var(--amber2)); border-color: transparent;
+  color: #1a1206; }
+.stp.done i { background: rgba(142,230,176,.22); border-color: rgba(142,230,176,.5); color: var(--green); }
+.stp.done { color: var(--dim); }
+.stp + .stp::before { content: ''; width: 18px; height: 1px; background: var(--line);
+  margin-right: 3px; }
+
+.accacts { display: flex; gap: 9px; }
+.accacts .btn { flex: 1; }
+.acclinks { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center; margin-top: 2px; }
+.lnk { background: none; border: none; padding: 3px 0; cursor: pointer; font-family: inherit;
+  font-size: 11.5px; color: var(--dim); letter-spacing: .5px; }
+.lnk:hover { color: var(--amber); text-decoration: underline; }
+
+/* 已发码提示条：把「发给谁了」明确写在界面上，减少「我是不是发错邮箱」的困惑 */
+.otpwho { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 10px;
+  background: rgba(255,255,255,.04); border: 1px solid var(--line); font-size: 11.5px;
+  color: var(--dim); }
+.otpwho b { color: var(--text); font-size: 12.5px; word-break: break-all; }
+.otpwho .wk { flex: 0 0 auto; }
+.otpwho .lnk { margin-left: auto; flex: 0 0 auto; }
+
+/* 模式说明：新邮箱 → 注册；老邮箱 → 登录。文案随服务端判定切换 */
+.otpmode { font-size: 11px; color: var(--dim2); text-align: center; line-height: 1.6; }
+.otpmode b { color: var(--amber); }
+
+.otprow { display: grid; grid-template-columns: 1fr auto; gap: 9px; align-items: center; }
+.otprow .btn.ghost { padding: 13px 20px; letter-spacing: 1px; font-size: 12px; white-space: nowrap; }
+.accpane .center { margin-top: 6px; }
+
+.acchint { margin-top: 12px; font-size: 12px; line-height: 1.6; text-align: center;
+  color: var(--dim2); min-height: 18px; padding: 0 8px; }
+.acchint.on { padding: 9px 13px; border-radius: 10px; }
+.acchint.on.ok { background: rgba(142,230,176,.12); border: 1px solid rgba(142,230,176,.35);
+  color: var(--green); }
+.acchint.on.bad { background: rgba(255,107,107,.12); border: 1px solid rgba(255,107,107,.38);
+  color: #ffd0d0; }
+
+/* ---------- 已登录 ---------- */
+.accwho { font-size: 15px; font-weight: 700; color: var(--text); padding: 11px 13px;
+  border-radius: 11px; background: var(--panel); border: 1px solid var(--line); word-break: break-all; }
+.acctable { display: flex; flex-direction: column; gap: 6px; }
+.accrow { display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 13px; border-radius: 10px; background: rgba(255,255,255,.03);
+  border: 1px solid var(--line); font-size: 12.5px; }
+.accrow .k { color: var(--dim); }
+.accrow .v { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; }
+
+/* ---------- 排行榜补充 ---------- */
+#board-tracks button { padding: 10px 8px; font-size: 12px; }
+#board-table tr.me td small { color: var(--amber); opacity: .8; font-size: 10px; }
+
+@media (max-width: 720px) {
+  #speednum { font-size: 52px; }
+  #mapwrap { width: 108px; height: 108px; }
+  #lapbox { min-width: 156px; padding: 10px 12px 9px; }
+  #curtime { font-size: 26px; }
+  #ranks { top: 132px; min-width: 148px; font-size: 11px; }
+  #keys { display: none; }
+  .row2 { grid-template-columns: 1fr; }
+  #driftnum { font-size: 34px; }
+
+  /* 云服务界面在窄屏下的堆叠 */
+  .otprow { grid-template-columns: 1fr; }
+  .otprow .btn.ghost { width: 100%; }
+  #board-tracks { flex-wrap: wrap; }
+  #board-tracks button { flex: 1 1 44%; }
+  .result-table { font-size: 12px; }
+  .result-table th, .result-table td { padding: 7px 6px; }
+
+  /* 操作设置：窄屏把说明折到第二行 */
+  .ctrlrow { grid-template-columns: 1fr auto; gap: 6px 10px; }
+  .ctrlrow .cd2 { grid-column: 1 / -1; }
+  .ctrlrow .seg.mini { grid-column: 2; grid-row: 1; }
+  .accinput.code { font-size: 19px; letter-spacing: 7px; text-indent: 7px; }
+}
+
+/* ---------- 横屏矮视口：把 HUD 压扁，给操控区腾地方 ---------- */
+@media (max-height: 520px) and (orientation: landscape) {
+  #lapbox { transform: scale(.86); transform-origin: top left; }
+  #mapwrap { width: 92px; height: 92px; }
+  #speedbox { transform: scale(.82); transform-origin: bottom right; }
+  #ranks { display: none; }
+  .tbtn.pedal.gas { width: 80px; height: 80px; }
+  .tbtn.pedal.brake { width: 66px; height: 66px; }
+  .tbtn.pedal.hand { width: 58px; height: 58px; }
+  .screen .section { padding: 12px 13px; }
+  .logo { font-size: clamp(22px, 4.4vw, 34px); }
+}
