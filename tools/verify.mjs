@@ -14,6 +14,9 @@
 
 import http from 'node:http';
 import { Browser, sleep, httpJson, CDP_PORT } from './cdp.mjs';
+// 服务器必须先在跑，否则 A1「页面加载完成」会带着所有场景一起报红，
+// 而那个症状与"启动被改坏"完全一样 —— 曾经因此误判过一次。这里自愈。
+import { ensureServer } from './serve.mjs';
 
 const SERVER = process.env.DR_SERVER || 'http://127.0.0.1:8790';
 
@@ -296,6 +299,10 @@ const want = (k) => only.length === 0 || only.includes(k);
 (async () => {
   log('\x1b[1m=== DRIFT RUSH 端到端验收 ===\x1b[0m');
   log(`服务器: ${SERVER}`);
+  if (!(await ensureServer(SERVER))) {
+    log('\x1b[31m服务器无法启动，验收无法进行（这是环境问题，不是产品问题）\x1b[0m');
+    process.exit(3);
+  }
 
   let browser = null;
   try {

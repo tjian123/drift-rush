@@ -18,13 +18,43 @@ import {
    原先这里是一段只给天空球用的 shader，而且日轮颜色硬编码成橙色，
    夜之城/雪山的 sun.color 色板根本没生效 —— 一并修掉。 */
 
+/* 环线赛道的「外侧」符号。
+   法向 (sx,sz) 只是切线旋转 90°，究竟朝环内还是环外全看绕向，而绕向由极坐标
+   参数决定、改一个相位就可能翻过来。实测本赛道的法向是**朝环内**的，于是
+   coastSide=1 把海铺进了内场：内场直径只有约 300~460，水往外铺一百多单位就撞上
+   对向路段被截断 —— 既没有海平线，也看不到连贯的海岸，这正是「感受不到海岸线」
+   的几何根因。所以这里不再靠配置猜，而是直接从几何算出朝外的符号。 */
+function outwardSign(track) {
+  let gx = 0,
+    gz = 0;
+  for (let i = 0; i < track.n; i++) {
+    gx += track.cx[i];
+    gz += track.cz[i];
+  }
+  gx /= track.n;
+  gz /= track.n;
+  const step = Math.max(1, Math.floor(track.n / 64));
+  let acc = 0;
+  for (let i = 0; i < track.n; i += step) {
+    const ox = track.cx[i] - gx,
+      oz = track.cz[i] - gz;
+    const L = Math.hypot(ox, oz);
+    if (L < 1e-3) continue;
+    acc += (track.sx[i] * ox + track.sz[i] * oz) / L;
+  }
+  return acc >= 0 ? 1 : -1;
+}
+
 /** 地形：顶点色 + PBR 平滑着色，贴赛道起伏（地面是大面积视觉主体，平滑+微粗糙最出质感） */
-function buildTerrain(THREE, track, layout) {
+function buildTerrain(THREE, track, layout, coastSign) {
   // 尺寸随赛道包围盒缩放，保证能盖住整条赛道
   const b = track.bounds;
   const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
   const SIZE = Math.round((span * 2.6 + 600) / 4) * 4;
-  const SEG = 104;
+  /* 网格密度直接决定岸线干不干净：地形与水面的交线是逐格走出来的，
+     格距越大、岸线锯齿越粗。SIZE≈1708 时 104 段 = 16.4 单位/格（原值）在
+     追尾镜头里能看到明显的锯齿轮廓；224 段 = 7.6 单位/格才够平顺。 */
+  const SEG = 224;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position;
@@ -37,13 +67,13 @@ function buildTerrain(THREE, track, layout) {
   const water = layout.water;
   const cDeep = water ? new THREE.Color(water.deep) : null;
   const tmp = new THREE.Color();
-  const coastSide = layout.coastSide ?? 1;
+  const coastSide = coastSign ?? layout.coastSide ?? 1;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i),
       z = p.getZ(i);
     const near = water ? track.nearestBrute(x, z, 6) : null;
     let h = terrainHeight(track, x, z, near ? () => near : undefined);
-    let wt = 0;
+    let wet = 0;
     let shoreMix = 0;
     let rockMix = 0;
     if (water && near) {
@@ -51,15 +81,29 @@ function buildTerrain(THREE, track, layout) {
       const side =
         (x - track.cx[idx]) * track.sx[idx] +
         (z - track.cz[idx]) * track.sz[idx];
-      const signed = Math.sign(side || 1) * coastSide;
-      const coastDist = side * coastSide;
-      const nearOcean = coastDist > 40 && near.dist > water.startDist;
-      shoreMix = clamp((coastDist - 40) / 135, 0, 1);
-      rockMix = clamp((Math.abs(coastDist) - 18) / 90, 0, 1) * (side * coastSide < 0 ? 1 : 0.25);
-      if (nearOcean) {
-        wt = smoothstep(water.startDist, water.fullDist, near.dist) * clamp((coastDist - 40) / 160, 0, 1);
-        if (signed < 0) wt *= 0.35;
-        h = lerp(h, water.floor, wt);
+      const coastDist = side * coastSide; // >0 = 海侧
+      rockMix = clamp((Math.abs(coastDist) - 18) / 90, 0, 1) * (coastDist < 0 ? 1 : 0.25);
+      if (coastDist > water.shoreFrom) {
+        /* 海侧地形 = 「路面基准高度 → 海床」的纯斜坡。
+           这里刻意**不**用 terrainHeight 的远场起伏（far，±16.5）：一旦掺进去，
+           岸线高度会被噪声推着走，可见岸线在 38~65 之间来回摆，海面看起来一截
+           一截的。只用 base（贴近路面的高程）当起点，岸线就是一条干净、随路面
+           缓坡自然起伏的线。wob 只在浅处给沙滩一点起伏，随坡深迅速衰减。 */
+        const flat = terrainHeight(track, x, z, () => ({ index: idx, dist: 9 }));
+        const slope = smoothstep(water.shoreFrom, water.shoreTo, near.dist);
+        const wob =
+          1.8 * Math.sin(x * 0.0125 + 1.1) * Math.cos(z * 0.0107 - 0.6);
+        h = lerp(flat, water.floor, slope) + wob * (1 - slope);
+        /* 沙滩：海侧的边坡本身就是沙滩，只把紧贴路肩的那一小段留给草 ——
+           改前沙滩只在水位上下十几米内出现，路缘到沙滩之间就空出一大条纯绿的
+           缓坡，镜头里是一整片绿疙瘩，完全没有海滨感。
+           第二个因子按**高度**而不是距离卡下界（水位以下 16 米到底），
+           这样水位以上的坡面全部是沙，干沙、湿沙、水下沙自然连成一条。 */
+        shoreMix =
+          clamp((coastDist - water.shoreFrom) / 6, 0, 1) *
+          clamp((h - water.level + 16) / 16, 0, 1);
+        wet = 1 - smoothstep(-2, 6, h - water.level);
+        rockMix = Math.max(rockMix, clamp((slope - 0.55) / 0.45, 0, 1) * 0.4);
       }
     }
     p.setY(i, h);
@@ -72,7 +116,7 @@ function buildTerrain(THREE, track, layout) {
     const dune = Math.abs(Math.sin(x * 0.004) * Math.cos(z * 0.0037));
     tmp.lerp(cD, smoothstep(0.25, 0.95, dune) * 0.2);
     tmp.multiplyScalar(0.82 + 0.38 * clamp((h + 8) / 22, 0, 1));
-    if (water && wt > 0) tmp.lerp(cDeep, Math.min(1, wt * 1.2));
+    if (water && wet > 0) tmp.lerp(cDeep, wet);
     colors[i * 3] = tmp.r;
     colors[i * 3 + 1] = tmp.g;
     colors[i * 3 + 2] = tmp.b;
@@ -91,72 +135,125 @@ function buildTerrain(THREE, track, layout) {
   return mesh;
 }
 
-/**
- * 海岸沙滩：靠海的一侧不要再是泛泛平铺，而是要有清晰的海滨带和近岸砂地。
- */
-function buildCoastSand(THREE, track, layout) {
-  const w = layout.water;
-  if (!w) return null;
-  const b = track.bounds;
-  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
-  const length = Math.max(1200, span * 2.8 + 620);
-  const width = 180;
-  const geo = new THREE.PlaneGeometry(length, width, 24, 8);
-  geo.rotateX(-Math.PI / 2);
-  const tangent = new THREE.Vector3(track.tx[0], 0, track.tz[0]).normalize();
-  const normal = new THREE.Vector3(track.sx[0], 0, track.sz[0]).normalize();
-  const side = (layout.coastSide ?? 1) * 260;
-  const mx = (b.minX + b.maxX) * 0.5 + normal.x * side;
-  const mz = (b.minZ + b.maxZ) * 0.5 + normal.z * side;
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xe7c792,
-    roughness: 1,
-    metalness: 0,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(mx + normal.x * 82, w.level + 1.5, mz + normal.z * 82);
-  mesh.rotation.y = Math.atan2(tangent.z, tangent.x) + Math.PI * 0.5;
-  mesh.name = "coast-sand";
-  return mesh;
-}
+/* 原先这里有两个「海岸装饰件」：一块 1200 长的沙滩平板 + 一个 30 高的崖壁长方体，
+ * 都只朝 track[0] 的单一方向摆放。那套做法默认海岸是一条直线，放到闭环赛道上必然
+ * 穿场 —— 垂直俯拍里那道横贯全图的灰绿色直墙就是它（详见 tools/shot-coast-topdown.png）。
+ * 现在沙滩由地形顶点色的 shoreMix 沿真实海岸线渐变生成、坡度由地形下沉负责，
+ * 两者都天然贴着赛道走，不需要额外的平板与墙。故整体删除。 */
 
-function buildCoastCliff(THREE, track, layout) {
+function buildOcean(THREE, track, layout, skyUniforms, coastSign) {
   const w = layout.water;
-  if (!w) return null;
-  const b = track.bounds;
-  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
-  const length = Math.max(1200, span * 2.5 + 560);
-  const geo = new THREE.BoxGeometry(length, 30, 18);
-  const tangent = new THREE.Vector3(track.tx[0], 0, track.tz[0]).normalize();
-  const normal = new THREE.Vector3(track.sx[0], 0, track.sz[0]).normalize();
-  const side = (layout.coastSide ?? 1) * 185;
-  const mx = (b.minX + b.maxX) * 0.5 + normal.x * side;
-  const mz = (b.minZ + b.maxZ) * 0.5 + normal.z * side;
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x586d4e,
-    roughness: 0.96,
-    metalness: 0.04,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(mx + normal.x * 95, 8.2, mz + normal.z * 95);
-  mesh.rotation.y = Math.atan2(tangent.z, tangent.x) + Math.PI * 0.5;
-  mesh.name = "coast-cliff";
-  return mesh;
-}
+  const coast = coastSign ?? layout.coastSide ?? 1;
 
-function buildOcean(THREE, track, layout, skyUniforms) {
-  const w = layout.water;
-  const b = track.bounds;
-  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
-  const SIZE = Math.round((span * 2.6 + 700) / 4) * 4;
-  const SEG = 128;
-  const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
-  geo.rotateX(-Math.PI / 2);
-  const tangent = new THREE.Vector3(track.tx[0], 0, track.tz[0]).normalize();
-  const normal = new THREE.Vector3(track.sx[0], 0, track.sz[0]).normalize();
-  const side = (layout.coastSide ?? 1) * 980;
-  const cx = (b.minX + b.maxX) * 0.5 + normal.x * side;
-  const cz = (b.minZ + b.maxZ) * 0.5 + normal.z * side;
+  /* === 海面几何：沿赛道生成的「带状水面」，而不是一块偏置大平面 ===
+     为什么必须换掉平面：赛道是闭环，一块朝某个方向偏置的大平面只能盖住环线
+     的一部分 —— 实测 12 段采样里 4 段完全没有水，还有几段的水跑到环线内侧
+     直接把路淹了，海岸线因此断断续续、完全不成景。
+     带状水面从路肩外侧（startDist）起、沿海岸侧向外铺开，绕整圈连续不断，
+     水线始终平行于公路；更关键的是「离岸距离」从此成为可用的着色依据，
+     才能做出近岸浅、远海深以及岸边碎浪（见片元着色器）。
+     注意：海是铺在环线**外侧**的 —— 内侧只有一两百单位的内场，水铺不开、
+     也出不来海平线。外侧符号由 outwardSign() 从几何算出，见那边注释。 */
+  const START = w.startDist; // 内缘：必定在路面之外，绝不会淹路
+  /* 外缘：一直铺到雾的 far 之前，海面在淡出之前就被雾吃干净，
+     于是没有"海面戛然而止"的硬边。远山里那圈 r≈720~960 的锥体全在这片海里，
+     山脚又压在水面以下，于是天然成了对岸的群岛。 */
+  const END = Math.max(900, layout.fog.far * 0.9);
+  /* 列（离岸距离）：近岸密集，保证短波不被网格采样拉花；远处按几何增长省顶点 */
+  const lats = [];
+  // 岸侧列间距 9：顶点波长最短 24，采样必须密于半波长（12）才不会被采成拍频花样
+  for (let d = START; d < 260; d += 9) lats.push(d);
+  for (let d = lats[lats.length - 1]; d < END; ) {
+    const nd = Math.min(d * 1.22, END);
+    if (nd > lats[lats.length - 1]) lats.push(nd);
+    d = nd;
+  }
+  const stride = 2;
+  const rows = Math.ceil(track.n / stride);
+  const cols = lats.length;
+
+  /* === 每行能延伸多远，必须动态截断 ===
+     直筒式地向外铺到 END 会出事：赛道是个闭环，某一侧延伸出去的水会横扫
+     整个环线、盖到对面那段路上 —— 实测最近的水面顶点离路面只有 0.6。
+     所以逐列检查「该点到赛道的最近距离」，一旦逼近任何路段（包括对面的），
+     这一行就停止延伸。这样从构造上保证水面永远淹不到路。 */
+  const valid = new Int32Array(rows);
+  for (let r = 0; r < rows; r++) {
+    const k = (r * stride) % track.n;
+    const cxp = track.cx[k],
+      czp = track.cz[k];
+    const sxp = track.sx[k] * coast,
+      szp = track.sz[k] * coast;
+    let v = cols;
+    for (let c = 0; c < cols; c++) {
+      /* stride 用 3 而不是默认的 6：nearestBrute 是「粗筛 + 局部精修」，粗筛步长
+         越大、在自相贴近的弯道里越可能挑错谷底、把距离报大。加密粗筛能收紧误差，
+         但它是近似算法、不保证取到全局最近点，所以守卫只能当作"足够好"的过滤：
+         实测全体顶点到整条中心线的最紧处是 26.2（路缘 8.7，仍余 17 单位），
+         而真正看得见的水线由岸坡决定、恒定落在 33~45。verify:sky 的 S7 就是量这个。 */
+      const near = track.nearestBrute(cxp + sxp * lats[c], czp + szp * lats[c], 3);
+      if (near && near.dist < START * 0.9) { v = c; break; }
+    }
+    valid[r] = v;
+  }
+
+  /* === 每行的「水线距离」 ===
+     地形高度是 base(=cy-0.45) → floor 的平滑坡，水面是 level，所以水线落在
+     slope = (base-level)/(base-floor) 的位置。把这根线解出来（smoothstep 反函数），
+     就能知道"这一行的水面，从哪里开始露出水面"。
+     为什么不能直接用离中心线的距离当深浅/泡沫的坐标：路是有高程的，可见水线因此
+     在离路 30~45 之间来回摆，用固定距离当基准的话，泡沫带会有一半落在岸上、一半
+     铺到水里，糊成一片灰膜。用「距水线的距离」当坐标，泡沫就永远焊在水线上。 */
+  const wl = w.level,
+    fl = w.floor,
+    sf = w.shoreFrom,
+    stw = w.shoreTo;
+  const shoreDist = new Float32Array(rows);
+  for (let r = 0; r < rows; r++) {
+    const k = (r * stride) % track.n;
+    const b = track.cy[k] - 0.45;
+    // smoothstep 反函数：x²(3-2x) = s  ⇒  x = 0.5 - sin(asin(1-2s)/3)
+    const s = clamp((b - wl) / (b - fl), 0.02, 0.98);
+    const x = 0.5 - Math.sin(Math.asin(1 - 2 * s) / 3);
+    shoreDist[r] = sf + x * (stw - sf);
+  }
+
+  const pos = new Float32Array(rows * cols * 3);
+  const shoreAttr = new Float32Array(rows * cols); // 离中心线的绝对侧向距离（给顶点浪做频率衰减）
+  const depthAttr = new Float32Array(rows * cols); // 距水线的距离（给深浅渐变与岸边碎浪）
+  for (let r = 0; r < rows; r++) {
+    const k = (r * stride) % track.n;
+    const cxp = track.cx[k],
+      czp = track.cz[k];
+    const sxp = track.sx[k] * coast,
+      szp = track.sz[k] * coast;
+    const lastValid = Math.max(0, valid[r] - 1); // 截断后不再用的列也收在合法位置
+    for (let c = 0; c < cols; c++) {
+      const cc = Math.min(c, lastValid);
+      const i3 = (r * cols + c) * 3;
+      pos[i3] = cxp + sxp * lats[cc];
+      pos[i3 + 1] = 0;
+      pos[i3 + 2] = czp + szp * lats[cc];
+      shoreAttr[r * cols + c] = lats[cc];
+      depthAttr[r * cols + c] = lats[cc] - shoreDist[r];
+    }
+  }
+  const idx = [];
+  for (let r = 0; r < rows; r++) {
+    const rn = (r + 1) % rows; // 闭环：最后一行接回第一行
+    const cmax = Math.min(valid[r], valid[rn]);
+    for (let c = 0; c < cmax - 1; c++) {
+      const a = r * cols + c, b = r * cols + c + 1;
+      const e = rn * cols + c, f = rn * cols + c + 1;
+      idx.push(a, e, b, b, e, f);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("aShore", new THREE.Float32BufferAttribute(shoreAttr, 1));
+  geo.setAttribute("aDepth", new THREE.Float32BufferAttribute(depthAttr, 1));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
 
   /* 关键：把天空那份 uniform 浅拷贝进来 —— 里面每个子对象仍是同一个引用，
      于是海面与天空球共用同一组太阳/天空色，换赛道时天然同步，不会各写各的。
@@ -168,6 +265,9 @@ function buildOcean(THREE, track, layout, skyUniforms) {
     uFoam: { value: new THREE.Color(w.foam) },
     // 指数雾密度反推自 each 赛道的 fog.far，保证到了 far 处刚好融透
     uFogDensity: { value: 2.5 / layout.fog.far },
+    /* 深浅渐变与岸边碎浪的基准已改为「距水线的距离」（见 aDepth）：
+       路有高程，可见水线在离路 30~45 间摆动，用固定距离当基准的泡沫带会有
+       一半落在岸上，糊成一片灰膜。原先的 uStartDist/uFullDist 因此退役。 */
   });
 
   const mat = new THREE.ShaderMaterial({
@@ -176,26 +276,52 @@ function buildOcean(THREE, track, layout, skyUniforms) {
     uniforms,
     vertexShader: `
       uniform float uTime;
+      attribute float aShore;
+      attribute float aDepth;
       varying vec3 vNormal;
       varying vec3 vWorldPos;
       varying float vHeight;
+      varying float vShore;
+      varying float vDepth;
 
-      float waveH(vec2 p, float t) {
+      /* 波长必须落进「视野里能装下好几道浪」的尺度：原来主频 0.045 → 波长 140 单位，
+         而岸边到 300 单位内只装得下两道，海面看着就是一块平整色板。
+         现在主频 0.115 → 波长 55，一路到 0.26 → 波长 24，视野里就有层层浪了。
+         更细的波纹交给片元里的细节法线（网格采样不了那么密）。
+
+         shore 用来按离岸距离收放振幅，这一条是必须的：外侧环是几何增长的
+         （×1.22），到 1000 单位处环距已经两百多，短浪在那里被欠采样成「一圈亮
+         一圈暗」的同心条纹，配合浪尖泡沫会变成一圈圈的白色涟漪。所以短浪只留
+         在采样够密的近岸带，远海换成一道波长 ~680 的超长涌浪 —— 环距再大也
+         表现得出，而且正好是远海该有的那种大尺度起伏。 */
+      float waveH(vec2 p, float t, float shore) {
+        /* 环距是 9→56→69→84→103… 的几何序列，所以每种波长都有它「过不了奈奎斯特」
+           的边界：波长 24 的环向分量 29，环距到 56 就只剩 0.5 个采样/波长 —— 那不是
+           波纹，是一圈亮一圈暗的同心梳齿。判据很简单：振幅必须在环距接近半波长
+           之前收到 0。于是 near 在 250 前退完（波长短的），mid 在 300 前退完
+           （波长 140 的），250 之外只留波长 ~680 的长涌 —— 它在最疏的环距下也有
+           六七个采样点，正好撑起远海该有的大起伏。 */
+        float near = 1.0 - smoothstep(70.0, 250.0, shore);
+        float mid = 1.0 - smoothstep(120.0, 300.0, shore);
+        float far = smoothstep(120.0, 700.0, shore);
         float h = 0.0;
-        h += sin(p.x * 0.045 + t * 1.15) * 0.34;
-        h += sin(p.y * 0.033 - t * 0.85 + 1.7) * 0.26;
-        h += sin((p.x + p.y) * 0.021 + t * 0.55) * 0.20;
-        h += sin(p.x * 0.11 - p.y * 0.075 + t * 2.0) * 0.09;
+        h += sin(p.x * 0.115 + t * 1.35) * 0.30 * near;
+        h += sin(p.y * 0.088 - t * 1.05 + 1.7) * 0.24 * near;
+        h += sin((p.x + p.y) * 0.045 + t * 0.70) * 0.22 * mid;
+        h += sin(p.x * 0.260 - p.y * 0.215 + t * 2.10) * 0.08 * near;
+        h += sin(p.x * 0.0092 + p.y * 0.0074 + t * 0.22) * 1.30 * far;
         return h;
       }
       void main() {
         vec3 pos = position;
         float eps = 1.2;
-        float h0 = waveH(pos.xz, uTime);
-        float hx = waveH(pos.xz + vec2(eps, 0.0), uTime);
-        float hz = waveH(pos.xz + vec2(0.0, eps), uTime);
+        float h0 = waveH(pos.xz, uTime, aShore);
+        float hx = waveH(pos.xz + vec2(eps, 0.0), uTime, aShore);
+        float hz = waveH(pos.xz + vec2(0.0, eps), uTime, aShore);
         pos.y += h0;
-        vHeight = h0 / 0.9;   // 归一化到约 [-1,1]，供浪尖泡沫与透光使用
+        vHeight = clamp(h0 / 0.9, -1.4, 1.4); // 约 [-1,1]，供浪尖泡沫与透光使用
+        vShore = aShore;      // 离中心线的绝对侧向距离：只用来给顶点浪做频率衰减
+        vDepth = aDepth;      // 距水线的距离：深浅渐变与岸边碎浪都用它
         vNormal = normalize(vec3(-(hx - h0) / eps, 1.0, -(hz - h0) / eps));
         vec4 worldPos = modelMatrix * vec4(pos, 1.0);
         vWorldPos = worldPos.xyz;
@@ -210,22 +336,45 @@ function buildOcean(THREE, track, layout, skyUniforms) {
       varying vec3 vNormal;
       varying vec3 vWorldPos;
       varying float vHeight;
+      varying float vShore;
+      varying float vDepth;
 
       void main() {
         vec3 N = normalize(vNormal);
         float dist = length(vWorldPos - cameraPosition);
 
-        /* 细节法线：两层滚动噪声取有限差分，补出网格铺不出来的细波纹。
-           按距离淡出 —— 远处网格采样本身就不够，再叠高频只会闪。 */
-        vec2 q = vWorldPos.xz * 0.55;
+        /* 细节法线：两层滚动噪声取有限差分，补出网格铺不出来的细波纹 —— 这是
+           海面"活起来"的关键，因为顶点波长受网格密度限制（岸侧列间距 9 单位），
+           而法线扰动不受。
+
+           **关键是采样频率必须随距离下降，而不是靠"淡出"硬撑。**
+           噪声特征尺度约 1.8 单位：在 200 单位外只占 4 个像素、400 外 2 个像素，
+           继续按原频率采，屏幕上就出现一层层摩尔纹横带（改前海面那几条横纹就是
+           它，跟网格、跟顶点浪都无关）。所以把噪声坐标乘一个随距离衰减的 lod ——
+           远处自动变成更大的起伏，世界空间里的斜率也随之降到 0，既不会闪，
+           也不用再额外写一段 fade。两层用不同的衰减速率：细纹退得快，
+           粗纹留得久，中远景的海面才有明暗起伏而不是一块纯色。 */
+        float lodF = 1.0 / (1.0 + dist * 0.016);
+        float lodC = 1.0 / (1.0 + dist * 0.0035);
+
+        vec2 q = vWorldPos.xz * 0.55 * lodF;
         float e = 0.35;
-        vec2 f1 = vec2(0.35, 0.6) * uTime;
-        vec2 f2 = vec2(-0.5, 0.25) * uTime;
+        vec2 f1 = vec2(0.30, 0.5) * uTime;
+        vec2 f2 = vec2(-0.42, 0.22) * uTime;
         float h0 = vnoise(q + f1) + 0.5 * vnoise(q * 2.7 + f2);
         float hx = vnoise(q + vec2(e, 0.0) + f1) + 0.5 * vnoise((q + vec2(e, 0.0)) * 2.7 + f2);
         float hz = vnoise(q + vec2(0.0, e) + f1) + 0.5 * vnoise((q + vec2(0.0, e)) * 2.7 + f2);
-        float detail = 0.55 * (1.0 - smoothstep(20.0, 160.0, dist));
-        N = normalize(N + vec3(h0 - hx, 0.0, h0 - hz) * detail);
+
+        vec2 qc = vWorldPos.xz * 0.045 * lodC;  // 特征尺度 ≈ 22 单位
+        float ec = 2.2;
+        vec2 fc = vec2(0.9, -0.6) * uTime;
+        float c0 = vnoise(qc + fc) + 0.45 * vnoise(qc * 2.3 - fc);
+        float cx = vnoise(qc + vec2(ec, 0.0) + fc) + 0.45 * vnoise((qc + vec2(ec, 0.0)) * 2.3 - fc);
+        float cz = vnoise(qc + vec2(0.0, ec) + fc) + 0.45 * vnoise((qc + vec2(0.0, ec)) * 2.3 - fc);
+
+        N = normalize(N
+          + vec3(h0 - hx, 0.0, h0 - hz) * 0.85
+          + vec3(c0 - cx, 0.0, c0 - cz) * 0.90);
 
         vec3 V = normalize(cameraPosition - vWorldPos);
         float ndv = max(dot(N, V), 0.0);
@@ -238,11 +387,17 @@ function buildOcean(THREE, track, layout, skyUniforms) {
         R = normalize(R);
         vec3 refl = skyColor(R);
 
-        /* 水体本色 + 浪尖透光（SSS）：逆着阳光看波峰会透亮，立体感主要来自这一项 */
+        /* 水体本色：用「离岸距离」做近岸浅、远海深 —— 这份依据是改成带状水面
+           之后才拿得到的（原先是块偏置平面，无从判断深浅，只能拿菲涅尔硬凑）。
+           浪尖透光（SSS）另加，逆着阳光看波峰会透亮。 */
         float sunDot = max(dot(N, uSunDir), 0.0);
-        vec3 water = mix(uDeep, uShallow, clamp(0.32 + sunDot * 0.42, 0.0, 1.0));
+        /* 渐变跨度原来写的是 +420，而整条可见海面也就 40~400：结果全区都还停在
+           浅海青，海像游泳池。收到 +150 —— 近岸十几米的透亮浅滩，200 开外就是
+           深海蓝，色彩层次一下就出来了。 */
+        float depthF = smoothstep(0.0, 150.0, vDepth);
+        vec3 water = mix(uShallow, uDeep, depthF) * (0.78 + 0.30 * sunDot);
         float sss = pow(max(dot(V, -uSunDir), 0.0), 3.0) * clamp(vHeight + 0.35, 0.0, 1.2);
-        water += uShallow * uSunColor * sss * 0.28;
+        water += uShallow * uSunColor * sss * 0.16;  // 浪尖透光别太绿，0.28 会把整片海染上绿味
 
         vec3 col = mix(water, refl, fres);
 
@@ -250,13 +405,37 @@ function buildOcean(THREE, track, layout, skyUniforms) {
         float rs = max(dot(R, uSunDir), 0.0);
         col += uSunColor * (pow(rs, 420.0) * 8.0 + pow(rs, 60.0) * 0.45) * uSunStrength * 0.5;
 
-        /* 泡沫：按浪高出现，用噪声打碎避免规则感 */
-        float fn = vnoise(vWorldPos.xz * 1.3 + uTime * 0.4) * 0.6
-                 + vnoise(vWorldPos.xz * 4.0 - uTime * 0.3) * 0.4;
-        float crest = smoothstep(0.55, 1.0, vHeight + fn * 0.3);
-        float steep = clamp((1.0 - N.y) * 2.6, 0.0, 1.0);
-        float foam = clamp(max(crest * 0.5, steep * 0.3), 0.0, 1.0);
-        col = mix(col, uFoam, foam * 0.5);
+        /* 泡沫分两类：
+           ① 浪尖——按浪高出现，用噪声打碎避免规则感
+           ② 岸边碎浪——只在近岸带出现并随时间涌动，形成拍岸的白浪线。
+              地形高于水面的地方水面本来就不可见，所以这条白带只会画在
+              真正的水线上，不会糊到岸上去。 */
+        // 泡沫的噪声同样按距离降频：原来 4.0 那一层特征尺度只有 0.25 单位，
+        // 几十米外就是亚像素级的噪声，会直接在浪花里叠出一层摩尔纹
+        float lodN = 1.0 / (1.0 + dist * 0.006);
+        float fn = vnoise(vWorldPos.xz * 0.9 * lodN + uTime * 0.4) * 0.65
+                 + vnoise(vWorldPos.xz * 2.6 * lodN - uTime * 0.3) * 0.35;
+        // 浪尖泡沫同样随距离淡出：远环的 vHeight 是被欠采样的，留着就会在海上
+        // 画出一圈圈的白色条纹（环状 moiré），比没有泡沫难看得多。
+        /* 阈值必须高：0.55 起跳意味着约 20% 的水面都在出泡沫，而泡沫色是米黄、
+           混进蓝水就是一层绿莹莹的网状纹 —— 那正是"海面发绿"的真凶（不是反射、
+           不是浅海色）。真实海面只有破碎浪才起白沫，0.80 起跳才稀疏得像样。
+           steep 同理：2.6 的斜率系数会让轻微起伏也起沫，收到 9.0 并加 0.45 死区。 */
+        float crest = smoothstep(0.80, 1.05, vHeight + fn * 0.22)
+                    * (1.0 - smoothstep(120.0, 480.0, dist));
+        float steep = clamp((1.0 - N.y) * 9.0 - 0.45, 0.0, 1.0)
+                    * (1.0 - smoothstep(300.0, 900.0, dist));
+
+        // 岸边碎浪：基准是「距水线的距离」，所以这条白带永远焊在真实水线上。
+        float nearBand = 1.0 - smoothstep(0.0, 26.0, vDepth);
+        float surge = 0.55
+                    + 0.45 * sin(uTime * 0.7 + vDepth * 0.05
+                              + vWorldPos.x * 0.012 + vWorldPos.z * 0.012);
+        float shoreFoam = smoothstep(0.18, 0.72, nearBand * (0.5 + 0.5 * fn) * surge);
+
+        // 岸边碎浪要"实"、浪尖泡沫要"虚"：前者是辨识海岸线的关键，后者只做点缀
+        float foam = clamp(max(max(crest * 0.34, steep * 0.20), shoreFoam * 0.80), 0.0, 1.0);
+        col = mix(col, uFoam, foam * 0.62);
 
         /* 远处融进天空本身（而不是一块平台雾色）→ 地平线无缝 */
         float fogF = 1.0 - exp(-pow(dist * uFogDensity, 1.35));
@@ -268,9 +447,10 @@ function buildOcean(THREE, track, layout, skyUniforms) {
       }`,
   });
 
+  // 顶点已是世界坐标，网格只需平移到水面高度。原来写的是 level+4（一个没有
+  // 来历的偏移），现在 level 本身就是绝对海平面，直接对齐，避免两处高度打架。
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(cx + normal.x * 220, w.level + 4.0, cz + normal.z * 220);
-  mesh.rotation.y = Math.atan2(tangent.z, tangent.x) + Math.PI * 0.5;
+  mesh.position.y = w.level;
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
   mesh.name = "ocean";
@@ -317,10 +497,17 @@ function buildMountains(THREE, layout, rng) {
     scl = new THREE.Vector3();
   const col = new THREE.Color();
   const axis = new THREE.Vector3(0, 1, 0);
+  /* 山脚高度：有海的赛道必须把山脚埋到水面以下，否则山体会悬在水上（远处一眼假）。
+     这些山位于 r≈720~960 的环上，在有海的赛道里全在环线外侧 —— 即整圈都在海里，
+     于是它们天然成了「对岸的群岛 / 远岸山影」，雾一罩就很像真实的海岸远景。 */
   for (let i = 0; i < cfg.count; i++) {
     const a = (2 * Math.PI * i) / cfg.count + rng() * 0.06;
     const r = 720 + rng() * 240;
-    pos.set(Math.cos(a) * r, -18 + rng() * 26, Math.sin(a) * r);
+    pos.set(
+      Math.cos(a) * r,
+      layout.water ? layout.water.level - 22 + rng() * 12 : -18 + rng() * 26,
+      Math.sin(a) * r,
+    );
     q.setFromAxisAngle(axis, rng() * Math.PI);
     scl.set(120 + rng() * 160, 70 + rng() * 130, 120 + rng() * 160); // 更矮胖
     m.compose(pos, q, scl);
@@ -446,11 +633,11 @@ function makeEnvironment(THREE, renderer, layout) {
 }
 
 /** 植被与建筑：沿赛道法向带状生成 + 回头校验净距（大平面随机撒点命中率太低） */
-function buildScatter(THREE, track, layout, rng) {
+function buildScatter(THREE, track, layout, rng, coastSign) {
   const group = new THREE.Group();
   const need = CFG.HALF_W + CFG.SHOULDER + 7.5;
   const n = track.n;
-  const coastSide = layout.coastSide ?? 0;
+  const coastSide = coastSign ?? layout.coastSide ?? 0;
 
   const trees = [];
   let guard = 0;
@@ -742,18 +929,18 @@ export function buildWorld(THREE, scene, track, renderer) {
   scene.environmentIntensity = 0.5;
   if (typeof window !== "undefined") window.__DR_SCENE__ = scene; // 验收/调试钩子
 
-  /* --- 地形 / 远山 / 植被 / 海面（仅海岸类赛道） --- */
-  const terrain = buildTerrain(THREE, track, layout);
+  /* --- 地形 / 远山 / 植被 / 海面（仅海岸类赛道） ---
+     海岸统一取环线「外侧」：内侧是内场，最多几百单位就到对向路段，水铺不开、
+     也出不来海平线。coastSide 退化为「外/内」的语义开关（1=外，-1=内），
+     真正的朝向由 outwardSign() 从几何算出，绕向怎么改都不会翻车。 */
+  const coastSign = layout.coastSide ? outwardSign(track) * Math.sign(layout.coastSide) : 0;
+  const terrain = buildTerrain(THREE, track, layout, coastSign);
   const mountains = buildMountains(THREE, layout, rng);
-  const scatter = buildScatter(THREE, track, layout, rng);
-  const coastCliff = layout.water ? buildCoastCliff(THREE, track, layout) : null;
-  const coastSand = layout.water ? buildCoastSand(THREE, track, layout) : null;
+  const scatter = buildScatter(THREE, track, layout, rng, coastSign);
   const ocean = layout.water
-    ? buildOcean(THREE, track, layout, skyUniforms)
+    ? buildOcean(THREE, track, layout, skyUniforms, coastSign)
     : null;
   group.add(terrain, mountains, scatter);
-  if (coastCliff) group.add(coastCliff);
-  if (coastSand) group.add(coastSand);
   if (ocean) group.add(ocean);
 
   scene.add(group);
