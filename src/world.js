@@ -6,40 +6,17 @@
 import { CFG } from "./config.js";
 import { terrainHeight } from "./track.js";
 import { makeRng, smoothstep, clamp, hexToRgb, lerp } from "./util.js";
+import {
+  makeSkyUniforms,
+  SKY_GLSL,
+  NOISE_GLSL,
+  buildSkyMesh,
+} from "./sky.js";
 
-/** 天空：单球体渐变 shader + 日轮与霞光，零贴图 */
-function buildSky(THREE, layout) {
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    uniforms: {
-      uTop: { value: new THREE.Color(layout.sky.top) },
-      uMid: { value: new THREE.Color(layout.sky.mid) },
-      uBot: { value: new THREE.Color(layout.sky.bot) },
-      uSun: { value: new THREE.Vector3(...layout.sun.dir).normalize() },
-      uSunStrength: { value: layout.sun.intensity > 2 ? 3.2 : 1.6 },
-    },
-    vertexShader: `varying vec3 vDir;
-      void main(){ vDir = normalize(position);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `
-      varying vec3 vDir;
-      uniform vec3 uTop,uMid,uBot,uSun;
-      uniform float uSunStrength;
-      void main(){
-        float h = clamp(vDir.y*0.5+0.5, 0.0, 1.0);
-        vec3 col = mix(uBot, uMid, smoothstep(0.42,0.60,h));
-        col = mix(col, uTop, smoothstep(0.58,0.92,h));
-        float sd = max(dot(normalize(vDir), normalize(uSun)), 0.0);
-        col += vec3(1.0,0.72,0.42) * pow(sd, 240.0) * uSunStrength;
-        col += vec3(1.0,0.55,0.28) * pow(sd, 14.0) * 0.42;
-        col += vec3(1.0,0.45,0.30) * pow(sd, 3.0) * 0.08;
-        gl_FragColor = vec4(col, 1.0);
-      }`,
-  });
-  return new THREE.Mesh(new THREE.SphereGeometry(1800, 36, 20), mat);
-}
+/* 天空已抽到 sky.js：一个 skyColor() 同时供货给天空球、海面反射与海面雾色，
+   三者共用同一份数学与同一组 uniform，因此不可能不一致。
+   原先这里是一段只给天空球用的 shader，而且日轮颜色硬编码成橙色，
+   夜之城/雪山的 sun.color 色板根本没生效 —— 一并修掉。 */
 
 /** 地形：顶点色 + PBR 平滑着色，贴赛道起伏（地面是大面积视觉主体，平滑+微粗糙最出质感） */
 function buildTerrain(THREE, track, layout) {
@@ -64,37 +41,38 @@ function buildTerrain(THREE, track, layout) {
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i),
       z = p.getZ(i);
-    // 与 water 共用同一次最近点查询：既算地形高度，也算离赛道的距离
     const near = water ? track.nearestBrute(x, z, 6) : null;
     let h = terrainHeight(track, x, z, near ? () => near : undefined);
     let wt = 0;
-    let coastBand = 0;
+    let shoreMix = 0;
+    let rockMix = 0;
     if (water && near) {
       const idx = near.index;
       const side =
         (x - track.cx[idx]) * track.sx[idx] +
         (z - track.cz[idx]) * track.sz[idx];
       const signed = Math.sign(side || 1) * coastSide;
-      coastBand = clamp((side * coastSide + 36) / 110, 0, 1);
-      wt = smoothstep(water.startDist, water.fullDist, near.dist) * coastBand;
-      if (signed < 0) wt *= 0.35;
-      h = lerp(h, water.floor, wt);
+      const coastDist = side * coastSide;
+      const nearOcean = coastDist > 40 && near.dist > water.startDist;
+      shoreMix = clamp((coastDist - 40) / 135, 0, 1);
+      rockMix = clamp((Math.abs(coastDist) - 18) / 90, 0, 1) * (side * coastSide < 0 ? 1 : 0.25);
+      if (nearOcean) {
+        wt = smoothstep(water.startDist, water.fullDist, near.dist) * clamp((coastDist - 40) / 160, 0, 1);
+        if (signed < 0) wt *= 0.35;
+        h = lerp(h, water.floor, wt);
+      }
     }
     p.setY(i, h);
-    tmp
-      .copy(cB)
-      .lerp(cA, clamp(g.mix + 0.4 * Math.sin(x * 0.011 + z * 0.009), 0, 1));
-    tmp.lerp(cC, smoothstep(6, 14, h) * 0.55);
-    tmp.lerp(
-      cD,
-      smoothstep(
-        0.4,
-        0.9,
-        Math.abs(Math.sin(x * 0.004) * Math.cos(z * 0.0037)),
-      ) * 0.25,
-    );
-    tmp.multiplyScalar(0.82 + 0.36 * clamp((h + 6) / 20, 0, 1));
-    if (water && wt > 0) tmp.lerp(cDeep, Math.min(1, wt * 1.15));
+
+    const inland = clamp(0.28 + 0.42 * (1 - shoreMix) + 0.2 * Math.sin(x * 0.01 + z * 0.008), 0, 1);
+    tmp.copy(cB).lerp(cA, inland);
+    tmp.lerp(cD, shoreMix * 0.9);
+    tmp.lerp(cC, rockMix * 0.8 + smoothstep(6, 14, h) * 0.28);
+
+    const dune = Math.abs(Math.sin(x * 0.004) * Math.cos(z * 0.0037));
+    tmp.lerp(cD, smoothstep(0.25, 0.95, dune) * 0.2);
+    tmp.multiplyScalar(0.82 + 0.38 * clamp((h + 8) / 22, 0, 1));
+    if (water && wt > 0) tmp.lerp(cDeep, Math.min(1, wt * 1.2));
     colors[i * 3] = tmp.r;
     colors[i * 3 + 1] = tmp.g;
     colors[i * 3 + 2] = tmp.b;
@@ -114,13 +92,59 @@ function buildTerrain(THREE, track, layout) {
 }
 
 /**
- * 海面：一张大平面 + 顶点着色器程序化叠加波浪（正弦叠加，零贴图），
- * 用解析导数算出法线来做光照，避免额外一次法线贴图/多重渲染的开销。
- * 菲涅尔控制深浅水颜色混合，沿太阳方向的高光模拟黄昏海面的粼粼波光。
- * 只在赛道定义了 layout.water 时创建；海床由 buildTerrain 下沉而成，
- * 二者之间留有固定高度差，天然不会有 z-fighting。
+ * 海岸沙滩：靠海的一侧不要再是泛泛平铺，而是要有清晰的海滨带和近岸砂地。
  */
-function buildOcean(THREE, track, layout) {
+function buildCoastSand(THREE, track, layout) {
+  const w = layout.water;
+  if (!w) return null;
+  const b = track.bounds;
+  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
+  const length = Math.max(1200, span * 2.8 + 620);
+  const width = 180;
+  const geo = new THREE.PlaneGeometry(length, width, 24, 8);
+  geo.rotateX(-Math.PI / 2);
+  const tangent = new THREE.Vector3(track.tx[0], 0, track.tz[0]).normalize();
+  const normal = new THREE.Vector3(track.sx[0], 0, track.sz[0]).normalize();
+  const side = (layout.coastSide ?? 1) * 260;
+  const mx = (b.minX + b.maxX) * 0.5 + normal.x * side;
+  const mz = (b.minZ + b.maxZ) * 0.5 + normal.z * side;
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xe7c792,
+    roughness: 1,
+    metalness: 0,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(mx + normal.x * 82, w.level + 1.5, mz + normal.z * 82);
+  mesh.rotation.y = Math.atan2(tangent.z, tangent.x) + Math.PI * 0.5;
+  mesh.name = "coast-sand";
+  return mesh;
+}
+
+function buildCoastCliff(THREE, track, layout) {
+  const w = layout.water;
+  if (!w) return null;
+  const b = track.bounds;
+  const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
+  const length = Math.max(1200, span * 2.5 + 560);
+  const geo = new THREE.BoxGeometry(length, 30, 18);
+  const tangent = new THREE.Vector3(track.tx[0], 0, track.tz[0]).normalize();
+  const normal = new THREE.Vector3(track.sx[0], 0, track.sz[0]).normalize();
+  const side = (layout.coastSide ?? 1) * 185;
+  const mx = (b.minX + b.maxX) * 0.5 + normal.x * side;
+  const mz = (b.minZ + b.maxZ) * 0.5 + normal.z * side;
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x586d4e,
+    roughness: 0.96,
+    metalness: 0.04,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(mx + normal.x * 95, 8.2, mz + normal.z * 95);
+  mesh.rotation.y = Math.atan2(tangent.z, tangent.x) + Math.PI * 0.5;
+  mesh.name = "coast-cliff";
+  return mesh;
+}
+
+function buildOcean(THREE, track, layout, skyUniforms) {
   const w = layout.water;
   const b = track.bounds;
   const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
@@ -128,27 +152,33 @@ function buildOcean(THREE, track, layout) {
   const SEG = 128;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
+  const tangent = new THREE.Vector3(track.tx[0], 0, track.tz[0]).normalize();
+  const normal = new THREE.Vector3(track.sx[0], 0, track.sz[0]).normalize();
+  const side = (layout.coastSide ?? 1) * 980;
+  const cx = (b.minX + b.maxX) * 0.5 + normal.x * side;
+  const cz = (b.minZ + b.maxZ) * 0.5 + normal.z * side;
+
+  /* 关键：把天空那份 uniform 浅拷贝进来 —— 里面每个子对象仍是同一个引用，
+     于是海面与天空球共用同一组太阳/天空色，换赛道时天然同步，不会各写各的。
+     海面的雾也不再用 scene.fog 的平台色，而是直接融进 skyColor()，见片元末尾。 */
+  const uniforms = Object.assign({}, skyUniforms, {
+    uTime: { value: 0 },
+    uDeep: { value: new THREE.Color(w.deep) },
+    uShallow: { value: new THREE.Color(w.shallow) },
+    uFoam: { value: new THREE.Color(w.foam) },
+    // 指数雾密度反推自 each 赛道的 fog.far，保证到了 far 处刚好融透
+    uFogDensity: { value: 2.5 / layout.fog.far },
+  });
 
   const mat = new THREE.ShaderMaterial({
-    fog: true,
+    fog: false,
     side: THREE.DoubleSide,
-    uniforms: THREE.UniformsUtils.merge([
-      THREE.UniformsLib.fog,
-      {
-        uTime: { value: 0 },
-        uDeep: { value: new THREE.Color(w.deep) },
-        uShallow: { value: new THREE.Color(w.shallow) },
-        uFoam: { value: new THREE.Color(w.foam) },
-        uSunDir: { value: new THREE.Vector3(...layout.sun.dir).normalize() },
-        uSunColor: { value: new THREE.Color(layout.sun.color) },
-        uSunStrength: { value: Math.min(3, layout.sun.intensity) },
-      },
-    ]),
+    uniforms,
     vertexShader: `
       uniform float uTime;
       varying vec3 vNormal;
       varying vec3 vWorldPos;
-      #include <fog_pars_vertex>
+      varying float vHeight;
 
       float waveH(vec2 p, float t) {
         float h = 0.0;
@@ -165,45 +195,82 @@ function buildOcean(THREE, track, layout) {
         float hx = waveH(pos.xz + vec2(eps, 0.0), uTime);
         float hz = waveH(pos.xz + vec2(0.0, eps), uTime);
         pos.y += h0;
+        vHeight = h0 / 0.9;   // 归一化到约 [-1,1]，供浪尖泡沫与透光使用
         vNormal = normalize(vec3(-(hx - h0) / eps, 1.0, -(hz - h0) / eps));
         vec4 worldPos = modelMatrix * vec4(pos, 1.0);
         vWorldPos = worldPos.xyz;
-        vec4 mvPosition = viewMatrix * worldPos;
-        gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
       }`,
     fragmentShader: `
-      uniform vec3 uDeep, uShallow, uFoam, uSunColor, uSunDir;
-      uniform float uSunStrength;
+      ${SKY_GLSL}
+      ${NOISE_GLSL}
+      uniform float uTime;
+      uniform vec3 uDeep, uShallow, uFoam;
+      uniform float uFogDensity;
       varying vec3 vNormal;
       varying vec3 vWorldPos;
-      #include <fog_pars_fragment>
+      varying float vHeight;
+
       void main() {
         vec3 N = normalize(vNormal);
+        float dist = length(vWorldPos - cameraPosition);
+
+        /* 细节法线：两层滚动噪声取有限差分，补出网格铺不出来的细波纹。
+           按距离淡出 —— 远处网格采样本身就不够，再叠高频只会闪。 */
+        vec2 q = vWorldPos.xz * 0.55;
+        float e = 0.35;
+        vec2 f1 = vec2(0.35, 0.6) * uTime;
+        vec2 f2 = vec2(-0.5, 0.25) * uTime;
+        float h0 = vnoise(q + f1) + 0.5 * vnoise(q * 2.7 + f2);
+        float hx = vnoise(q + vec2(e, 0.0) + f1) + 0.5 * vnoise((q + vec2(e, 0.0)) * 2.7 + f2);
+        float hz = vnoise(q + vec2(0.0, e) + f1) + 0.5 * vnoise((q + vec2(0.0, e)) * 2.7 + f2);
+        float detail = 0.55 * (1.0 - smoothstep(20.0, 160.0, dist));
+        N = normalize(N + vec3(h0 - hx, 0.0, h0 - hz) * detail);
+
         vec3 V = normalize(cameraPosition - vWorldPos);
-        vec3 L = normalize(uSunDir);
-        float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.2);
-        float sunDot = max(dot(N, L), 0.0);
-        float horizonLift = smoothstep(-0.15, 0.75, N.y + 0.18);
-        vec3 col = mix(uDeep, uShallow, clamp(fresnel * 1.45 + 0.30 + sunDot * 0.45, 0.0, 1.0));
-        col = mix(col, uFoam, horizonLift * 0.06);
+        float ndv = max(dot(N, V), 0.0);
+        /* Schlick 菲涅尔，F0 = 0.02 是水的物理值：
+           掠射看过去几乎全反射（看见的是天），垂直俯视才看得见水体本色。
+           这一步就是过去"海面不像水"的根因 —— 原先根本没有反射项。 */
+        float fres = 0.02 + 0.98 * pow(clamp(1.0 - ndv, 0.0, 1.0), 5.0);
+        vec3 R = reflect(-V, N);
+        R.y = abs(R.y) + 0.02;   // 细节扰动可能把反射压到地平线以下，抬回来免出黑斑
+        R = normalize(R);
+        vec3 refl = skyColor(R);
 
-        vec3 H = normalize(V + L);
-        float spec = pow(max(dot(N, H), 0.0), 260.0) * uSunStrength;
-        float spec2 = pow(max(dot(N, H), 0.0), 18.0) * 0.42;
-        col += uSunColor * (spec + spec2);
+        /* 水体本色 + 浪尖透光（SSS）：逆着阳光看波峰会透亮，立体感主要来自这一项 */
+        float sunDot = max(dot(N, uSunDir), 0.0);
+        vec3 water = mix(uDeep, uShallow, clamp(0.32 + sunDot * 0.42, 0.0, 1.0));
+        float sss = pow(max(dot(V, -uSunDir), 0.0), 3.0) * clamp(vHeight + 0.35, 0.0, 1.2);
+        water += uShallow * uSunColor * sss * 0.28;
 
-        // 浪尖越陡（法线偏离越大）越白，模拟碎浪泡沫
-        float steep = clamp((1.0 - N.y) * 2.8, 0.0, 1.0);
-        col = mix(col, uFoam, steep * 0.28);
+        vec3 col = mix(water, refl, fres);
+
+        /* 海面上的太阳：尖锐笔芯 + 宽散光晕双瓣，才有阳光洒在海面那条光路 */
+        float rs = max(dot(R, uSunDir), 0.0);
+        col += uSunColor * (pow(rs, 420.0) * 8.0 + pow(rs, 60.0) * 0.45) * uSunStrength * 0.5;
+
+        /* 泡沫：按浪高出现，用噪声打碎避免规则感 */
+        float fn = vnoise(vWorldPos.xz * 1.3 + uTime * 0.4) * 0.6
+                 + vnoise(vWorldPos.xz * 4.0 - uTime * 0.3) * 0.4;
+        float crest = smoothstep(0.55, 1.0, vHeight + fn * 0.3);
+        float steep = clamp((1.0 - N.y) * 2.6, 0.0, 1.0);
+        float foam = clamp(max(crest * 0.5, steep * 0.3), 0.0, 1.0);
+        col = mix(col, uFoam, foam * 0.5);
+
+        /* 远处融进天空本身（而不是一块平台雾色）→ 地平线无缝 */
+        float fogF = 1.0 - exp(-pow(dist * uFogDensity, 1.35));
+        vec3 fd = normalize(vWorldPos - cameraPosition);
+        vec3 fogCol = skyColor(vec3(fd.x, max(fd.y * 0.02, 0.0) + 0.004, fd.z));
+        col = mix(col, fogCol, clamp(fogF, 0.0, 1.0));
 
         gl_FragColor = vec4(col, 1.0);
-        #include <fog_fragment>
       }`,
   });
 
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.y = w.level;
+  mesh.position.set(cx + normal.x * 220, w.level + 4.0, cz + normal.z * 220);
+  mesh.rotation.y = Math.atan2(tangent.z, tangent.x) + Math.PI * 0.5;
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
   mesh.name = "ocean";
@@ -352,11 +419,19 @@ function makeEnvironment(THREE, renderer, layout) {
   const v = 0.5 - Math.asin(clamp(sunDir.y, -1, 1)) / Math.PI;
   const sx = u * W,
     sy = v * H;
+  // 太阳光斑：颜色取自色板的 sun.color，强度按 sun.intensity 归一。
+  // 原先这里硬编码成暖白 rgba(255,246,220)，导致夜之城/雪山的环境反射颜色不对。
+  const sunCol = new THREE.Color(layout.sun.color);
+  const to255 = (v) => Math.round(clamp(v, 0, 1) * 255);
+  const sr = to255(sunCol.r),
+    sg = to255(sunCol.g),
+    sb = to255(sunCol.b);
+  const k = clamp(layout.sun.intensity / 3, 0.35, 1);
   const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, W * 0.2);
-  glow.addColorStop(0, "rgba(255,246,220,1)");
-  glow.addColorStop(0.12, "rgba(255,220,160,0.55)");
-  glow.addColorStop(0.45, "rgba(255,200,120,0.14)");
-  glow.addColorStop(1, "rgba(255,200,120,0)");
+  glow.addColorStop(0, `rgba(255,255,255,${k.toFixed(3)})`);
+  glow.addColorStop(0.12, `rgba(${sr},${sg},${sb},${(0.55 * k).toFixed(3)})`);
+  glow.addColorStop(0.45, `rgba(${sr},${sg},${sb},${(0.14 * k).toFixed(3)})`);
+  glow.addColorStop(1, `rgba(${sr},${sg},${sb},0)`);
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
 
@@ -651,8 +726,13 @@ export function buildWorld(THREE, scene, track, renderer) {
   group.add(hemi, amb);
   created.push(hemi, amb);
 
-  /* --- 天空 / 雾 --- */
-  const sky = buildSky(THREE, layout);
+  /* --- 天空 / 雾 ---
+     skyUniforms 里每个 uniform 都是独立对象引用：天空球直接持有它，海面则用
+     Object.assign 浅拷贝后仍指向同一批对象 —— 所以两者永远同步，换赛道亦然。
+     scene.fog 只留给 PBR 物体（地形/建筑）做远距离衰减；海面不用它，
+     而是自行融进 skyColor()，这样水天线才不会断成一条色带。 */
+  const skyUniforms = makeSkyUniforms(THREE, layout);
+  const sky = buildSkyMesh(THREE, skyUniforms);
   group.add(sky);
   created.push(sky);
   scene.fog = new THREE.Fog(layout.fog.color, layout.fog.near, layout.fog.far);
@@ -666,8 +746,14 @@ export function buildWorld(THREE, scene, track, renderer) {
   const terrain = buildTerrain(THREE, track, layout);
   const mountains = buildMountains(THREE, layout, rng);
   const scatter = buildScatter(THREE, track, layout, rng);
-  const ocean = layout.water ? buildOcean(THREE, track, layout) : null;
+  const coastCliff = layout.water ? buildCoastCliff(THREE, track, layout) : null;
+  const coastSand = layout.water ? buildCoastSand(THREE, track, layout) : null;
+  const ocean = layout.water
+    ? buildOcean(THREE, track, layout, skyUniforms)
+    : null;
   group.add(terrain, mountains, scatter);
+  if (coastCliff) group.add(coastCliff);
+  if (coastSand) group.add(coastSand);
   if (ocean) group.add(ocean);
 
   scene.add(group);

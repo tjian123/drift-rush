@@ -142,6 +142,11 @@ function makeCamState() {
 const camA = makeCamState();
 const camB = makeCamState();
 
+/* 调试机位覆写（默认 null = 不生效，正常玩法零影响）。
+   用于验收脚本把镜头对准海岸线、远山这类从赛道视角看不到的景物做截图比对。
+   —— 若没有它，赛道视角永远朝内陆，海面改动根本没法用截图证明。 */
+let camOverride = null;
+
 /* -------------------------------------------------------------- 赛道数据 */
 const trackObjects = {};
 for (const id of TRACK_ORDER) trackObjects[id] = buildTrack(id);
@@ -1003,6 +1008,16 @@ function updateCamera(cs, racer, dt) {
   cs.fov = damp(cs.fov, targetFov, 3.4, dt);
   cam.fov = cs.fov;
   cam.updateProjectionMatrix();
+
+  /* 调试机位覆写放在最后：设了它就完全接管相机（正常玩法下 camOverride 为 null，
+     这一整段不会执行）。 */
+  if (camOverride) {
+    cam.position.set(camOverride.pos[0], camOverride.pos[1], camOverride.pos[2]);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(camOverride.look[0], camOverride.look[1], camOverride.look[2]);
+    cam.fov = camOverride.fov || 60;
+    cam.updateProjectionMatrix();
+  }
 }
 
 /* ==========================================================================
@@ -2196,6 +2211,12 @@ window.__DR_API__ = {
     r.input[k] = !!down;
     if (!p2) kbHold[k] = !!down;
     return true;
+  },
+  /** 调试机位：{ pos:[x,y,z], look:[x,y,z], fov } 覆写相机；传 null 还原。
+      与 __DR_SCENE__/__DR_IX__ 一样属于验收钩子，正常玩法不触发。 */
+  freeCam(o) {
+    camOverride = o || null;
+    return camOverride;
   },
   /** 赛道中心线取点，供循线自动驾驶脚本使用 */
   trackPoint(i, lateral = 0) {
