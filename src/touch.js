@@ -293,6 +293,11 @@ export class TouchControls {
    *   · 死区：手指轻微抖动不该让车头晃（占半径 16%）
    *   · 有效行程：半径的 82% 即打满，不必把手指顶到圈外
    *   · 灵敏度：指数曲线，sens > 1 时小位移就能给出更大的转向量
+   *
+   * 符号约定（与 car.js 的 input.steer 严格一致）：
+   *   · 正值 = 左转，负值 = 右转（car.js 里 digital = left - right，
+   *     追尾相机下 heading 增大对应车头左转）
+   *   · 所以「手指向右拖 dx>0」必须返回负值 = 右转，故整体取负号。
    */
   _steerValue(dx) {
     const R = this._ringR();
@@ -302,7 +307,7 @@ export class TouchControls {
     if (a <= dz || usable <= dz) return 0;
     const t = clamp((a - dz) / (usable - dz), 0, 1);
     const shaped = Math.pow(t, 1 / clamp(this.settings.sens, 0.4, 3));
-    return Math.sign(dx) * shaped;
+    return -Math.sign(dx) * shaped;
   }
 
   _setSteer(v, fromDrag) {
@@ -434,13 +439,14 @@ export class TouchControls {
       else this.steer = this._releaseFrom * (1 - t);
     }
 
-    /* 陀螺仪：以开启时刻的姿态为零点，左右倾斜 20° 打满 */
+    /* 陀螺仪：以开启时刻的姿态为零点，左右倾斜 20° 打满。
+       同样取负号，与拖动保持一致的符号约定（右倾 = 负 = 右转）。 */
     let steer = this.steer;
     if (this.settings.tilt && this._tilt.active && this._steerPid === null) {
       const g = this._tilt.gamma - this._tilt.base;
       const dz = 2.0;
       const a = Math.abs(g);
-      steer = a <= dz ? 0 : clamp(Math.sign(g) * (a - dz) / 20, -1, 1) * clamp(this.settings.sens, 0.4, 3);
+      steer = a <= dz ? 0 : clamp(-Math.sign(g) * (a - dz) / 20, -1, 1) * clamp(this.settings.sens, 0.4, 3);
     }
 
     /* 松手回正会改 this.steer，而 apply 每帧都跑 —— 顺手刷新调试快照，
@@ -468,7 +474,8 @@ export class TouchControls {
 
     /* 只写模拟量，不写 left/right 开关量：
        car.js 里两者相加后再夹紧，若同时置位，小幅转向会被开关量顶到满舵。
-       左右手布局只换手的位置，不翻转物理方向（右拖永远是右转）。 */
+       左右手布局只换手的位置，不翻转物理方向（右拖永远是右转）。
+       此处的 steer 已是「正值=左转 / 负值=右转」的约定（见 _steerValue 注释）。 */
     racer.input.steer = steer;
     racer.input.left = false;
     racer.input.right = false;

@@ -161,27 +161,27 @@ async function dragHold(page, { from, to, id = 1, steps = 5, holdMs = 45, releas
     const right = { x: ring.x + R * 0.75, y: ring.y };
     const s1 = await dragHold(page, { from: { x: ring.x, y: ring.y }, to: right, id: 1 });
     check('M7 圈内按住拖动产生模拟量转向（不是「按下即打死」）',
-      s1.t.steering === true && s1.t.steer > 0.4 && s1.t.steer < 1.01,
+      s1.t.steering === true && s1.t.steer < -0.4 && s1.t.steer > -1.01,
       `__DR_TOUCH__.steer=${s1.t.steer}（拖了 0.75R，未打满）`);
     check('M8 拖动量真的到达物理层（__DR__.steer 同步）',
-      Math.abs(s1.steer - s1.t.steer) < 0.05 && s1.steer > 0.4,
+      Math.abs(s1.steer - s1.t.steer) < 0.05 && s1.steer < -0.4,
       `__DR__.steer=${s1.steer}`);
     check('M9 拖动期间方向盘进入激活态并有视觉反馈',
       s1.t.ring.active === true && /translate\(/.test(s1.t.knob),
       `active=${s1.t.ring.active} · knob=${s1.t.knob}`);
 
-    // 满舵方向一致性：向右拖 → 车头右转（heading 增大）
+    // 满舵方向一致性：向右拖 → 车头右转（追尾相机下 heading 减小）
     const h0 = s1.heading;
     await sleep(500);
     const s2 = await snap(page);
-    check('M10 右拖方向盘车真的向右转（heading 增加）',
-      s2.heading > h0, `heading ${h0.toFixed(3)} → ${s2.heading.toFixed(3)}`);
+    check('M10 右拖方向盘车真的向右转（heading 减小）',
+      s2.heading < h0, `heading ${h0.toFixed(3)} → ${s2.heading.toFixed(3)}`);
 
-    // 反向：拖到左侧应当得到负的转向量
+    // 反向：拖到左侧应当得到正的转向量（左转）
     const left = { x: ring.x - R * 0.85, y: ring.y };
     const sL = await dragHold(page, { from: { x: ring.x, y: ring.y }, to: left, id: 1 });
     check('M11 反拖得到反向转向量（符号正确）',
-      sL.t.steer < -0.4, `steer=${sL.t.steer}`);
+      sL.t.steer > 0.4, `steer=${sL.t.steer}`);
 
     // 死区：极小位移不该让车头晃
     const sDead = await dragHold(page, { from: { x: ring.x, y: ring.y }, to: { x: ring.x + R * 0.08, y: ring.y }, id: 1 });
@@ -211,10 +211,10 @@ async function dragHold(page, { from, to, id = 1, steps = 5, holdMs = 45, releas
     await sleep(220);
     const multi = await snap(page);
     check('M14 多点触控：转向与油门两根手指同时生效',
-      multi.t.steer > 0.4 && multi.t.pedals.gas === true && multi.t.pointers === 2,
+      multi.t.steer < -0.4 && multi.t.pedals.gas === true && multi.t.pointers === 2,
       `steer=${multi.t.steer} · gas=${multi.t.pedals.gas} · pointers=${multi.t.pointers}`);
     check('M15 多点触控时转向量没有被第二根手指打断',
-      Math.abs(multi.steer - multi.t.steer) < 0.05 && multi.steer > 0.4,
+      Math.abs(multi.steer - multi.t.steer) < 0.05 && multi.steer < -0.4,
       `__DR__.steer=${multi.steer}`);
 
     /* ================================================ 踏板：滑动切换 */
@@ -289,7 +289,7 @@ async function dragHold(page, { from, to, id = 1, steps = 5, holdMs = 45, releas
       return { lo, hi, now: ${TOUCH_STATE}.sens };
     })()`);
     check('M23 转向灵敏度设置真实改变输入曲线（高灵敏 = 同样位移转向更大）',
-      sens.hi > sens.lo + 0.1 && sens.now === 1,
+      Math.abs(sens.hi) > Math.abs(sens.lo) + 0.1 && sens.now === 1,
       `0.5R 位移：稳 ${sens.lo.toFixed(3)} → 灵敏 ${sens.hi.toFixed(3)}`);
 
     /* ================================================ 左手布局 */
