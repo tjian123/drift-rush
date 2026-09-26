@@ -13,6 +13,7 @@
     "verify:signup": "node tools/verify-signup.mjs",
     "verify:menubg": "node tools/verify-menu-bg.mjs",
     "verify:sky": "node tools/verify-sky.mjs",
+    "verify:quality": "node tools/verify-quality.mjs",
     "verify:item": "node tools/verify-item.mjs"
   },
   "notes": {

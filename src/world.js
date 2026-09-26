@@ -273,6 +273,9 @@ function buildOcean(THREE, track, layout, skyUniforms, coastSign) {
   const mat = new THREE.ShaderMaterial({
     fog: false,
     side: THREE.DoubleSide,
+    /* 同 sky.js：海面也要把 alpha 写成 0 当作「不做色调映射」的标记，
+       所以必须 NoBlending —— 默认的 NormalBlending 在 alpha 上会把这个 0 吃掉。 */
+    blending: THREE.NoBlending,
     uniforms,
     vertexShader: `
       uniform float uTime;
@@ -329,8 +332,8 @@ function buildOcean(THREE, track, layout, skyUniforms, coastSign) {
       }`,
     fragmentShader: `
       ${SKY_GLSL}
-      ${NOISE_GLSL}
-      uniform float uTime;
+      /* uTime 已由 SKY_GLSL 声明（云要用它）：GLSL 不允许重复声明同名 uniform，
+         这里不能再写一遍 uniform float uTime。 */
       uniform vec3 uDeep, uShallow, uFoam;
       uniform float uFogDensity;
       varying vec3 vNormal;
@@ -443,7 +446,9 @@ function buildOcean(THREE, track, layout, skyUniforms, coastSign) {
         vec3 fogCol = skyColor(vec3(fd.x, max(fd.y * 0.02, 0.0) + 0.004, fd.z));
         col = mix(col, fogCol, clamp(fogF, 0.0, 1.0));
 
-        gl_FragColor = vec4(col, 1.0);
+        /* alpha = 0：天空/海面这类自定义 shader 从未经过色调映射（见 postfx.js 的长注释），
+           显式标出来，后处理才不会给海面套上 ACES 把浅海色洗白。 */
+        gl_FragColor = vec4(col, 0.0);
       }`,
   });
 
@@ -887,13 +892,18 @@ export function buildWorld(THREE, scene, track, renderer) {
     layout.sun.intensity,
   );
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  /* 阴影分辨率是"车看着贴不贴地"的直接因素：1024 铺在 108 单位见方的范围上，
+     1 个 texel ≈ 0.105 单位，车身轮廓和树的边缘都是一格格的台阶。
+     2048 + 收紧到 96 单位 → 0.047 单位/texel，边缘明显干净。
+     范围收紧是有代价的（更远处的树不再投影），但车周围 48 米才是玩家真正
+     盯着看的地方，这笔交换划算。 */
+  sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 280;
-  sun.shadow.camera.left = -54;
-  sun.shadow.camera.right = 54;
-  sun.shadow.camera.top = 54;
-  sun.shadow.camera.bottom = -54;
+  sun.shadow.camera.left = -48;
+  sun.shadow.camera.right = 48;
+  sun.shadow.camera.top = 48;
+  sun.shadow.camera.bottom = -48;
   sun.shadow.bias = -0.0012;
   sun.shadow.normalBias = 0.035;
   // 正交阴影相机改过边界必须手动刷投影矩阵，否则改动不生效
@@ -971,6 +981,16 @@ export function buildWorld(THREE, scene, track, renderer) {
     scatter,
     ocean,
     setDetail,
+    /** 低画质档位把阴影图降回 1024：2048 的深度渲染在弱机上是一次实打实的开销。
+        改 mapSize 必须丢掉旧 FBO，否则尺寸不生效。 */
+    setShadowSize(n) {
+      if (sun.shadow.mapSize.x === n) return;
+      sun.shadow.mapSize.set(n, n);
+      if (sun.shadow.map) {
+        sun.shadow.map.dispose();
+        sun.shadow.map = null;
+      }
+    },
     sunDir: new THREE.Vector3(...layout.sun.dir).normalize(),
     dispose() {
       scene.remove(group);

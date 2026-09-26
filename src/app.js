@@ -23,6 +23,7 @@ import { createItemSystem, ITEM_NAMES } from "./items.js";
 import { buildTrack, terrainHeight } from "./track.js";
 import { buildRoad } from "./road.js";
 import { buildWorld } from "./world.js";
+import { createPostFX } from "./postfx.js";
 import {
   buildCarMesh,
   makeRacer,
@@ -122,9 +123,16 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.06;
+/* 色调映射不再由 renderer 做，改到后处理链末端的合成 shader 里（见 postfx.js）。
+   原因：泛光要"超过 1.0 的亮度"才有东西可提，场景必须先渲进未压缩的 HDR 缓冲；
+   若在这里就 ACES 压到 0..1，后面什么都提不出来。 */
+renderer.toneMapping = THREE.NoToneMapping;
 app.appendChild(renderer.domElement);
+
+/* 后处理链：HDR 场景缓冲 → 亮部提取 → 三级泛光 → ACES + 暗角 → 画布 */
+const post = createPostFX(THREE, renderer);
+post.exposure = 1.06;
+post.setSize(innerWidth, innerHeight);
 
 const scene = new THREE.Scene();
 
@@ -164,6 +172,9 @@ function applyQualityLevel(level) {
   level = clamp(level, 0, 2);
   quality.level = level;
   renderer.setPixelRatio(Math.min(devicePixelRatio, level >= 2 ? 2 : 1));
+  post.setSize(innerWidth, innerHeight); // pixelRatio 变了，缓冲尺寸要跟着重算
+  // 泛光是纯额外的全屏开销：最低档位直接关掉，中档减三成
+  post.strength = [0, 0.2, 0.32][level];
   const shadowsOn = level >= 1;
   if (renderer.shadowMap.enabled !== shadowsOn) {
     renderer.shadowMap.enabled = shadowsOn;
@@ -173,6 +184,8 @@ function applyQualityLevel(level) {
   }
   if (game.world && game.world.setDetail)
     game.world.setDetail(DETAIL_FACTOR[level]);
+  if (game.world && game.world.setShadowSize)
+    game.world.setShadowSize(level >= 2 ? 2048 : 1024);
 }
 
 /* ---------------------------------------------------------------- 音频 */
@@ -1629,9 +1642,12 @@ function frame(now) {
       applyQualityLevel(quality.level + 1); // fps 回稳后自动升回去
   }
 
-  /* ---- 海面动画：赛道自带 water 配置时才存在，菜单动态背景里也要转起来 ---- */
-  if (game.world && game.world.ocean) {
-    game.world.ocean.material.uniforms.uTime.value = now / 1000;
+  /* ---- 海面 / 云动画：赛道自带 water 配置时才存在，菜单动态背景里也要转起来。
+     天空与海面共用同一个 uTime 引用，云的移动和浪的起伏天然同步。 ---- */
+  if (game.world) {
+    const t = now / 1000;
+    if (game.world.ocean) game.world.ocean.material.uniforms.uTime.value = t;
+    if (game.world.sky) game.world.sky.material.uniforms.uTime.value = t;
   }
 
   /* ---- 菜单动态背景：演示车巡航；离开菜单（开局/进大厅）自动清理 ---- */
@@ -2017,7 +2033,9 @@ function allRacersForRanking() {
   return list;
 }
 
-function render() {
+/** 把场景画进当前渲染目标：分屏时自己处理两个视口，单屏时一个。
+    抽成函数是因为后处理链需要"由它来决定画到哪里"—— 见 post.render(drawScene)。 */
+function drawScene() {
   const w = renderer.domElement.width / renderer.getPixelRatio();
   const h = renderer.domElement.height / renderer.getPixelRatio();
   if (game.mode === MODES.SPLIT && game.locals.length > 1) {
@@ -2042,6 +2060,10 @@ function render() {
     renderer.setViewport(0, 0, w, h);
     renderer.render(scene, camA.cam);
   }
+}
+
+function render() {
+  post.render(drawScene);
 }
 
 /* ==========================================================================
@@ -2105,6 +2127,7 @@ addEventListener("unhandledrejection", (e) =>
 
 addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
+  post.setSize(innerWidth, innerHeight); // 后处理缓冲必须跟着走，否则合成会拉伸/错位
 });
 
 /* ---------------------------------------------- 自动化测试 / 调试钩子 */
@@ -2200,6 +2223,45 @@ window.__DR_API__ = {
   /** 触屏操控实例，供移动端验收脚本做状态断言 */
   touch() {
     return touch;
+  },
+  /** 后处理链（泛光/曝光/暗角），供画质验收脚本定量调节与断言 */
+  post() {
+    return post;
+  },
+  /**
+   * 读回画布上某点的最终像素。画质类改动（色调映射、色彩空间、泛光）没有报错、
+   * 只有"看起来不对"，靠截图人眼比对既不可回归也说不清。有了它才能把
+   * 「天顶像素应当等于调色板的天顶色」这种判据写成断言。
+   *
+   * 两个必须遵守的细节：
+   *  ① 必须先 render()：不开 preserveDrawingBuffer 时，帧一旦被合成，缓冲就作废。
+   *  ② y 轴要翻转：readPixels 的原点在左下，这里收 CSS 像素坐标（左上原点）。
+   */
+  sample(cssX, cssY, r = 0) {
+    render();
+    const gl = renderer.getContext();
+    const pr = renderer.getPixelRatio();
+    const n = r * 2 + 1;
+    const buf = new Uint8Array(n * n * 4);
+    gl.readPixels(
+      Math.round(cssX * pr) - r,
+      Math.round((innerHeight - 1 - cssY) * pr) - r,
+      n,
+      n,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      buf,
+    );
+    let R = 0,
+      G = 0,
+      B = 0;
+    for (let i = 0; i < n * n; i++) {
+      R += buf[i * 4];
+      G += buf[i * 4 + 1];
+      B += buf[i * 4 + 2];
+    }
+    const c = n * n;
+    return [R / c, G / c, B / c];
   },
   /** 键位注入（键盘路径回归用）：与真实 keydown 走同一张映射表 */
   key(code, down) {
