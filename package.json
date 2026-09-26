@@ -14,7 +14,8 @@
     "verify:menubg": "node tools/verify-menu-bg.mjs",
     "verify:sky": "node tools/verify-sky.mjs",
     "verify:quality": "node tools/verify-quality.mjs",
-    "verify:item": "node tools/verify-item.mjs"
+    "verify:item": "node tools/verify-item.mjs",
+    "verify:tv": "node tools/verify-tv.mjs"
   },
   "notes": {
     "verify:signup": "真实账号闭环。DR_PHASE=signup（默认）走邮箱验证码注册；DR_PHASE=login 用已注册账号密码登录，免验证码复跑成绩上传/上榜环节（零依赖，环境变量请直接在 shell 里设置）"

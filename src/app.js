@@ -24,6 +24,8 @@ import { buildTrack, terrainHeight } from "./track.js";
 import { buildRoad } from "./road.js";
 import { buildWorld } from "./world.js";
 import { createPostFX } from "./postfx.js";
+import { createTV } from "./tv.js";
+import { createTVNav } from "./tvnav.js";
 import {
   buildCarMesh,
   makeRacer,
@@ -130,6 +132,26 @@ renderer.toneMapping = THREE.NoToneMapping;
 app.appendChild(renderer.domElement);
 
 /* 后处理链：HDR 场景缓冲 → 亮部提取 → 三级泛光 → ACES + 暗角 → 画布 */
+
+/* 老电视 / 盒子的浏览器常常只有 WebGL1，而且没有「可渲染的半浮点」扩展。
+   这时 HDR 场景缓冲根本建不起来（framebuffer 不完整 → 整屏黑），比"少一层
+   泛光"严重得多。所以开局探测一次：不支持就整条链旁路，画面直出。 */
+function hdrTargetOK() {
+  try {
+    const gl = renderer.getContext();
+    const isGL2 =
+      typeof WebGL2RenderingContext !== "undefined" &&
+      gl instanceof WebGL2RenderingContext;
+    if (isGL2) return true; // WebGL2 原生可渲染 RGBA16F
+    return !!(
+      gl.getExtension("EXT_color_buffer_half_float") &&
+      gl.getExtension("OES_texture_half_float")
+    );
+  } catch (e) {
+    return false;
+  }
+}
+const postBypass = !hdrTargetOK();
 const post = createPostFX(THREE, renderer);
 post.exposure = 1.06;
 post.setSize(innerWidth, innerHeight);
@@ -162,14 +184,32 @@ for (const id of TRACK_ORDER) trackObjects[id] = buildTrack(id);
 /* -------------------------------------------------------------- 特效系统 */
 const smoke = createSmokeSystem(THREE, scene);
 const skid = createSkidSystem(THREE, scene);
+
+/* ------------------------------------------------------------ 电视模式 */
+/* 必须在 applyQualityLevel 之前建好：电视/盒子要给画质档位加一道上限，
+   否则满画质（后处理 + 2048 阴影）在这类 GPU 上很可能直接卡死。 */
+const tv = createTV({
+  onChange(on) {
+    applyQualityLevel(quality.level); // 上限变了，重新夹一次
+    refreshTVSwitch();
+  },
+});
 const quality = { level: 2, samples: [], lastAdjust: 0 };
+
+/** 菜单里那个「电视模式」按钮的选中态；电视模式下顺便补一次进全屏的提示。 */
+function refreshTVSwitch() {
+  ui.setTV(tv.enabled);
+}
 
 /* 画质等级：2=满血 1=省电(半分辨率) 0=最低(半分辨率+关阴影+远景减半)
    与旧版本的区别：旧逻辑只会往下掉、从不回升；现在 fps 回稳后会自动升回去，
    长时间卡顿的设备也不会因为「曾经掉过帧」就永远停在低画质。 */
 const DETAIL_FACTOR = [0.42, 0.7, 1];
 function applyQualityLevel(level) {
-  level = clamp(level, 0, 2);
+  /* 电视/盒子给档位加一道上限（见 tv.js 的 maxLevel）：这类 GPU 跑满画质
+     （半浮点缓冲 + 三级泛光 + 2048 阴影）很可能直接卡死。用户选的档位
+     本来就低于上限时不受影响，所以这不是「强制降级」，只是封顶。 */
+  level = clamp(level, 0, tv.maxLevel());
   quality.level = level;
   renderer.setPixelRatio(Math.min(devicePixelRatio, level >= 2 ? 2 : 1));
   post.setSize(innerWidth, innerHeight); // pixelRatio 变了，缓冲尺寸要跟着重算
@@ -301,6 +341,19 @@ const ui = new UI({
     quitToMenu();
   },
   onUseItem: (slot) => useLocalItem(slot),
+  onTV() {
+    const on = tv.toggle();
+    ui.toast(
+      on ? "电视模式：界面已按观看距离放大" : "已回到标准界面尺寸",
+      true,
+      1800,
+    );
+  },
+  onFullscreen() {
+    tv.requestFullscreen().then((ok) => {
+      if (!ok) ui.toast("这台设备不允许网页全屏，可手动按遥控器的全屏键", false);
+    });
+  },
 });
 
 ach.onUnlock = (meta) => {
@@ -1082,6 +1135,10 @@ addEventListener("keydown", (e) => {
     !e.repeat &&
     !e.isComposing
   ) {
+    /* 焦点导航（手柄 / 遥控器）已经在某一项上时，交给它去点那一项。
+       注意这里必须**直接放过**（return 而不 activate）：tvnav 自己也监听
+       keydown，这里再点一次就会变成「一次回车跳两步」。 */
+    if (tvnav.hasFocus()) return;
     if (ui.menuAdvance()) {
       e.preventDefault();
       return;
@@ -1246,7 +1303,12 @@ const touch = new TouchControls({
 const pad = createPadController({
   onActivate() {
     audio.init();
-    ui.toast(`手柄已连接：${pad.name}`, true, 2400);
+    // 连上就顺手告诉玩家菜单怎么走：不然进了菜单会发现手柄「失灵」
+    ui.toast(
+      `${pad.name} 已连接 · 十字键选择 · A 确认 · B 返回 · START 开始`,
+      true,
+      2800,
+    );
   },
   onDeactivate() {
     // 拔线瞬间清空本地输入，避免残留油门让车自己跑
@@ -1266,16 +1328,36 @@ const pad = createPadController({
   },
 });
 
+/* ---------------------------------------------------- 手柄菜单导航（焦点）
+ * 手柄在比赛里早就通了（pad.js 直接写 racer.input），但菜单是纯 DOM 按钮，
+ * 没有焦点系统就等于「能开车、开不了局」—— 接上电视后必须有人拿鼠标点开始。
+ * 电视遥控器的方向键/OK 在浏览器里就是方向键/回车，走的是同一套逻辑。 */
+const tvnav = createTVNav({ ui });
+window.__DR_TVNAV__ = tvnav; // 验收脚本驱动入口（无真实手柄时）
+
 /** 操作设置面板：桌面端只显示键位，触屏设备才展开可调项 */
 function wireCtrlSettings() {
   const grid = document.getElementById("ctrl-grid");
   const note = document.getElementById("ctrl-note");
   if (!grid) return;
   const rowIds = ["row-autogas", "row-hand", "row-sens", "row-tilt"];
+  /* 电视浏览器有时也会报告 touch 支持（安卓 TV 的遥控器/遥控器指针），
+     但屏幕上根本没有可点的虚拟踏板。识别为电视设备时一律按非触屏处理，
+     只留键位与手柄说明，免得玩家看到一组永远点不到的开关。 */
+  const tvDevice = tv.isTVDevice();
   for (const id of rowIds)
-    document.getElementById(id).classList.toggle("hide", !touch.isTouch);
-  document.getElementById("row-keys").classList.toggle("hide", touch.isTouch);
-  document.getElementById("row-pad").classList.toggle("hide", touch.isTouch);
+    document.getElementById(id).classList.toggle(
+      "hide",
+      !touch.isTouch || tvDevice,
+    );
+  document.getElementById("row-keys").classList.toggle(
+    "hide",
+    touch.isTouch && !tvDevice,
+  );
+  document.getElementById("row-pad").classList.toggle(
+    "hide",
+    touch.isTouch && !tvDevice,
+  );
 
   /* 折叠：触屏设备默认收起（矮横屏下整块会跑出屏幕），桌面默认展开；
      用户手动展开/收起后记住选择。 */
@@ -2063,6 +2145,12 @@ function drawScene() {
 }
 
 function render() {
+  if (postBypass) {
+    // 旁路：直接画到画布（没有泛光，但保证老电视浏览器不会黑屏）
+    renderer.setRenderTarget(null);
+    drawScene();
+    return;
+  }
   post.render(drawScene);
 }
 
@@ -2076,6 +2164,17 @@ function boot() {
   ui.showScreen("menu");
   ui.renderAchievements(ach);
   wireCtrlSettings();
+  /* 电视模式：按钮选中态 + 自动开启时给一次说明。
+     自动开启（UA 识别为电视 / URL 带 ?tv=1）用户是看不见开关状态的，
+     不给提示的话「界面突然变大」会被当成 bug。 */
+  refreshTVSwitch();
+  tv.fit(); // 菜单内容刚建好，这时量出来的高度才有意义（见 tv.js 的 fit 注释）
+  if (tv.enabled && tv.reason !== "manual")
+    ui.toast(
+      `已按电视模式放大界面（${tv.reason === "ua" ? "识别为电视设备" : "链接参数"}）· 右上角可关闭`,
+      true,
+      3600,
+    );
   touch.setRotateGate(true);
   renderer.setAnimationLoop(frame);
   document.title = "READY · DRIFT RUSH";
@@ -2227,6 +2326,32 @@ window.__DR_API__ = {
   /** 后处理链（泛光/曝光/暗角），供画质验收脚本定量调节与断言 */
   post() {
     return post;
+  },
+  /** 电视模式（放大倍率 / 是否电视设备 / 画质上限），供投屏验收脚本断言 */
+  tv() {
+    return {
+      enabled: tv.enabled,
+      reason: tv.reason,
+      hudScale: tv.hudScale,
+      menuScale: tv.menuScale,
+      isTVDevice: tv.isTVDevice(),
+      maxLevel: tv.maxLevel(),
+      gpu: tv.gpuName(),
+      quality: quality.level,
+      fullscreen: tv.isFullscreen,
+      postBypass, // 老电视无 HDR 缓冲时旁路后处理（直出画面，不黑屏）
+    };
+  },
+  /** 菜单焦点导航（手柄 / 遥控器），供验收脚本在无真实手柄时驱动 */
+  tvnav() {
+    return tvnav;
+  },
+  /** 重算菜单放大倍率（电视模式专用钩子）：返回当前的 --ui-menu */
+  tvFit(force) {
+    tv.fit(!!force);
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue("--ui-menu")
+      .trim();
   },
   /**
    * 读回画布上某点的最终像素。画质类改动（色调映射、色彩空间、泛光）没有报错、

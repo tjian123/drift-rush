@@ -114,6 +114,27 @@ export class UI {
     }
   }
 
+  /** 电视模式开关的视觉状态（按钮本身在 index.html 的 .menu-links 里） */
+  setTV(on) {
+    const b = $('btn-tv');
+    if (!b) return;
+    b.classList.toggle('on', !!on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.textContent = on ? '电 视 模 式 · 开' : '电 视 模 式';
+  }
+
+  /** 当前可见的全屏界面（menu/lobby/pause/result/account/board），比赛中为 null。
+      手柄菜单导航靠它判断该在哪一屏里找可聚焦控件。
+      注意 account/board 排在前面：它们是叠在菜单之上的浮层，菜单那一刻并没有
+      加 .hide，按 DOM 顺序会先命中菜单、把焦点放到被盖住的按钮上。 */
+  activeScreen() {
+    for (const k of ['account', 'board', 'menu', 'lobby', 'pause', 'result']) {
+      const el = document.getElementById('screen-' + k);
+      if (el && !el.classList.contains('hide')) return { id: k, el };
+    }
+    return null;
+  }
+
   /* ==================================================== 菜单分步引导 */
   /* 1 赛道 → 2 赛制 → 3 车手。首屏只切赛道，每步一屏内放得下，
      不依赖滚动（移动端矮横屏也全部可达）。 */
@@ -607,6 +628,10 @@ export class UI {
     });
 
     $('btn-go').addEventListener('click', () => this.cb.onGo(this.state));
+    /* 电视模式 / 全屏：投屏到电视的两件事（放大 + 占满屏），详见 src/tv.js */
+    $('btn-tv').addEventListener('click', () => this.cb.onTV && this.cb.onTV());
+    $('btn-fs').addEventListener('click', () =>
+      this.cb.onFullscreen && this.cb.onFullscreen());
     $('btn-ach').addEventListener('click', () => {
       this.el.pauseTitle.textContent = '成 就';
       this.el.achPanel.classList.remove('hide');
