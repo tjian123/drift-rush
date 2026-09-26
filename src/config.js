@@ -68,20 +68,20 @@ export const TRACKS = {
         { k: 3, amp: 1.8, phase: 2.1 },
       ],
     },
-    sky: { top: 0x101a3a, mid: 0x6b5aa8, bot: 0xffb881 },
+    sky: { top: 0x8ec8ff, mid: 0x69a9e6, bot: 0xf9d7b3 },
     /* 云量：0=万里无云，1=阴天。云写在共享的 skyColor() 里，所以每加一分，
        海面反射里就多一分云 —— 这是"水看起来像水"最省成本的一招。 */
     cloud: 0.85,
-    fog: { color: 0xf7c28d, near: 95, far: 1450 },
-    sun: { color: 0xffd8a8, intensity: 2.8, dir: [-0.48, 0.38, -0.8] },
-    hemi: { sky: 0xb0c9f6, ground: 0x56463b, intensity: 1.05 },
-    ambient: { color: 0x536781, intensity: 0.42 },
+    fog: { color: 0xe9cda4, near: 90, far: 1600 },
+    sun: { color: 0xffefd0, intensity: 3.1, dir: [-0.42, 0.42, -0.82] },
+    hemi: { sky: 0xc5dfef, ground: 0x4c3829, intensity: 1.12 },
+    ambient: { color: 0x6d8198, intensity: 0.48 },
     ground: {
-      grass: 0x567d45,
-      dry: 0x9b8656,
-      rock: 0x6f6b77,
-      sand: 0xb69a72,
-      mix: 0.42,
+      grass: 0x497a3d,
+      dry: 0x9a8357,
+      rock: 0x746d66,
+      sand: 0xd9be8b,
+      mix: 0.46,
     },
     /* 真实海岸：海侧地形按「离赛道距离」平滑下沉成海床，海面是沿赛道生成的
        带状动态水体，两者高度差由 level/floor 保证（海面永远浮在海床上，不穿模）。
@@ -96,14 +96,14 @@ export const TRACKS = {
       level: -10.0,
       floor: -26.0, // 海床：比水面低 16，坡度看得见
       /* 岸坡：从离中线 shoreFrom 起下沉、到 shoreTo 完全落到海床。
-         这套距离决定了「水面到路边有多远」—— 改前是 62→220 才沉完，
+         这套距离决定了「水面到路边有多远」—— 改前是 72→230 才沉完，
          路肩外还留着一道 5~9 高的土坎，视线被它挡死，海只剩天边一条线。
          现在 11→62：可见岸线落在离路 33~45 处（即路缘外 25 米左右），路边就是海。
          而且坡度更陡（≈30°）还有第二个好处 —— 地形网格与水面的交线在水线的
          水平方向上摆动更小，回头看岸线就不是锯齿了。 */
       shoreFrom: 11,
       shoreTo: 62,
-      startDist: 32, // 海面网格内缘：略早于可见水线，被地形盖住，看不到接缝
+      startDist: 32, // 海面网格内缘：略早于可见岸线，被地形盖住，看不到接缝
       shallow: 0x7ad7d8,
       deep: 0x1a4f6f,
       /* 泡沫用冷白而不是米黄：米黄混进蓝水会变成绿，整片海都是绿莹莹的网状纹
