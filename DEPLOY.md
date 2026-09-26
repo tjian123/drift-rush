@@ -52,8 +52,24 @@
 
 ## 3. 发布后自检
 
-1. 打开分享链接，确认页面正常加载、无控制台报错。
-2. 跑一遍回归脚本（可选，但推荐）：
+> **只测「首页返回 200」不足以证明新版本上去了。** 缓存与 CDN 会让旧版本同样返回 200。
+> 要确认「这次改动真的在线上」，必须比对线上**源文件的内容**。
+
+1. 基础探活：
+   ```bash
+   curl -s -o /dev/null -w "首页 %{http_code}\n" https://drift-rush-online.app.workbuddy.host/
+   curl -s https://drift-rush-online.app.workbuddy.host/api/health
+   # {"ok":true,"rooms":0,"players":0,"uptime":34}
+   # uptime 很小 = 确实是刚新起的实例，不是旧进程
+   ```
+2. **比对线上源文件的版本特征**（把这次改动里的某个特征值 grep 出来）：
+   ```bash
+   curl -s https://drift-rush-online.app.workbuddy.host/src/config.js  | grep -n "0x8ec8ff\|shoreFrom"
+   curl -s https://drift-rush-online.app.workbuddy.host/src/postfx.js  | grep -n "uThreshold"
+   ```
+   看不到本次改动的特征值，说明上传的是旧内容或命中了缓存。
+3. 打开分享链接，确认页面正常加载、无控制台报错。
+4. 跑一遍回归脚本（可选，但推荐）：
    ```bash
    # 先本地起服务（默认 3000 或指定端口）
    node server/index.js
@@ -62,7 +78,7 @@
    node tools/verify-pad.mjs      # 手柄适配
    node tools/verify-item.mjs     # 道具赛
    ```
-3. 实测玩法：键盘 WASD、触屏拖动转向（右拖=右转）、手柄（盖世小鸡等标准 XInput 布局）均应按预期工作。
+5. 实测玩法：键盘 WASD、触屏拖动转向（右拖=右转）、手柄（盖世小鸡等标准 XInput 布局）均应按预期工作。
 
 ---
 
