@@ -29,9 +29,11 @@ const STICK_DZ = 0.55; // 摇杆当作方向键用的死区（比驾驶死区大
 /** 可聚焦控件：按钮 / 角色开关 / 涂装色块 / 赛道卡 / 步骤圆点。
     刻意不含 input[type=text]：遥控器上没法打字，聚焦它只会出现一个进得去、
     出不来（A 键无效、方向键被吃掉）的死角。名字用默认值，联机建房不受影响。 */
-const FOCUS_SEL = 'button:not([disabled]), [role="switch"], .paint, .trackcard, .stp';
+// Include the name input so TV/gamepad users can update their player name via a prompt.
+const FOCUS_SEL =
+  'button:not([disabled]), [role="switch"], .paint, .trackcard, .stp, input#name-input';
 
-const DIRS = ['up', 'down', 'left', 'right'];
+const DIRS = ["up", "down", "left", "right"];
 
 /* 标准映射（XInput / Xbox 布局）：十字键在 buttons[12..15] */
 const BTN = { A: 0, B: 1, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
@@ -50,15 +52,15 @@ function pick(dir, items, i) {
     const dy = p.y - c.y;
     let primary = 0;
     let cross = 0;
-    if (dir === 'left') {
+    if (dir === "left") {
       if (dx >= -2) continue;
       primary = -dx;
       cross = Math.abs(dy);
-    } else if (dir === 'right') {
+    } else if (dir === "right") {
       if (dx <= 2) continue;
       primary = dx;
       cross = Math.abs(dy);
-    } else if (dir === 'up') {
+    } else if (dir === "up") {
       if (dy >= -2) continue;
       primary = -dy;
       cross = Math.abs(dx);
@@ -117,7 +119,7 @@ export function createTVNav(opts = {}) {
     for (const el of nodes) {
       // 三道可见性过滤：display:none（rect 为 0）、祖先带 .hide、视觉隐藏。
       // 分步菜单里另外两步是 .hide，不过滤就会聚焦到看不见的按钮上。
-      if (el.closest('.hide')) continue;
+      if (el.closest(".hide")) continue;
       const r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       items.push({ el, rect: r });
@@ -137,18 +139,18 @@ export function createTVNav(opts = {}) {
     const it = st.items[st.index];
     if (!it) return;
     st.focusedEl = it.el;
-    it.el.classList.add('navfocus');
+    it.el.classList.add("navfocus");
     try {
-      it.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      it.el.scrollIntoView({ block: "nearest", inline: "nearest" });
     } catch (e) {
       /* 老电视浏览器可能不认对象参数，忽略即可（焦点框本身仍然正确） */
     }
   }
 
   function clearFocus() {
-    if (st.focusedEl) st.focusedEl.classList.remove('navfocus');
-    const old = document.querySelector('.navfocus');
-    if (old && old !== st.focusedEl) old.classList.remove('navfocus');
+    if (st.focusedEl) st.focusedEl.classList.remove("navfocus");
+    const old = document.querySelector(".navfocus");
+    if (old && old !== st.focusedEl) old.classList.remove("navfocus");
     st.focusedEl = null;
   }
 
@@ -157,14 +159,15 @@ export function createTVNav(opts = {}) {
       按 DOM 顺序它排在最前，一接手柄焦点就落在右上角，玩家得一路按回来。 */
   function defaultIndex() {
     const card = st.items.findIndex(
-      (x) => x.el.classList.contains('trackcard') && x.el.classList.contains('on'),
+      (x) =>
+        x.el.classList.contains("trackcard") && x.el.classList.contains("on"),
     );
     if (card >= 0) return card;
     const seg = st.items.findIndex(
-      (x) => x.el.classList.contains('on') && !x.el.classList.contains('btn'),
+      (x) => x.el.classList.contains("on") && !x.el.classList.contains("btn"),
     );
     if (seg >= 0) return seg;
-    const any = st.items.findIndex((x) => x.el.classList.contains('on'));
+    const any = st.items.findIndex((x) => x.el.classList.contains("on"));
     return any >= 0 ? any : 0;
   }
 
@@ -192,6 +195,26 @@ export function createTVNav(opts = {}) {
   function activate() {
     const it = st.items[st.index];
     if (!it) return false;
+    // If focused element is a text input (name input), open a prompt to allow
+    // TV / gamepad users to enter text (avoids getting stuck in an unfocusable
+    // input on non-keyboard devices). Otherwise trigger a normal click.
+    try {
+      const el = it.el;
+      if (el && el.tagName && el.tagName.toLowerCase() === "input") {
+        // Use prompt() as a simple on-screen keyboard fallback.
+        const cur = el.value || "";
+        const v = prompt("输入车手名字：", cur);
+        if (v !== null) {
+          el.value = String(v).slice(0, el.maxLength || 32);
+          // Dispatch input event so existing listeners (HUD) react and persist.
+          const ev = new Event("input", { bubbles: true });
+          el.dispatchEvent(ev);
+        }
+        return true;
+      }
+    } catch (e) {
+      /* ignore prompt failures */
+    }
     it.el.click();
     return true;
   }
@@ -199,7 +222,7 @@ export function createTVNav(opts = {}) {
   /** B / 返回：各屏的「上一步」按钮；菜单里则是退回上一步骤 */
   function back() {
     const id = st.screen;
-    if (id === 'menu') {
+    if (id === "menu") {
       // 步骤面板里退一步；已经是第 1 步就不动（没有可返回的上一层）
       if (ui.menuStep > 0) {
         ui.setMenuStep(ui.menuStep - 1);
@@ -208,14 +231,14 @@ export function createTVNav(opts = {}) {
       return false;
     }
     const map = {
-      lobby: 'btn-lobby-back',
-      pause: 'btn-resume',
-      result: 'btn-back-menu',
-      account: 'btn-acc-back',
-      board: 'btn-board-back',
+      lobby: "btn-lobby-back",
+      pause: "btn-resume",
+      result: "btn-back-menu",
+      account: "btn-acc-back",
+      board: "btn-board-back",
     };
-    const b = document.getElementById(map[id] || '');
-    if (b && !b.closest('.hide')) {
+    const b = document.getElementById(map[id] || "");
+    if (b && !b.closest(".hide")) {
       b.click();
       return true;
     }
@@ -225,17 +248,17 @@ export function createTVNav(opts = {}) {
   /** Start / 主按钮：推进流程（菜单下一步 → 最后一步直接开赛） */
   function advance() {
     const id = st.screen;
-    if (id === 'menu') {
+    if (id === "menu") {
       ui.menuAdvance();
       return true;
     }
     const map = {
-      lobby: 'btn-race-start',
-      result: 'btn-again',
-      pause: 'btn-resume',
+      lobby: "btn-race-start",
+      result: "btn-again",
+      pause: "btn-resume",
     };
-    const b = document.getElementById(map[id] || '');
-    if (b && !b.closest('.hide')) {
+    const b = document.getElementById(map[id] || "");
+    if (b && !b.closest(".hide")) {
       b.click();
       return true;
     }
@@ -265,7 +288,7 @@ export function createTVNav(opts = {}) {
     const g = gamepad();
     if (g && !st.padSeen) {
       st.padSeen = true;
-      root.classList.add('padnav'); // 让焦点框常驻可见（电视上更醒目）
+      root.classList.add("padnav"); // 让焦点框常驻可见（电视上更醒目）
       if (opts.onPadSeen) opts.onPadSeen();
     }
     if (!screen) return; // 比赛中：不抢输入
@@ -276,19 +299,20 @@ export function createTVNav(opts = {}) {
 
     /* --- 方向：十字键 + 左摇杆，带连发 --- */
     let dir = null;
-    const b = (i) => (g && g.buttons && g.buttons[i]) || { pressed: false, value: 0 };
+    const b = (i) =>
+      (g && g.buttons && g.buttons[i]) || { pressed: false, value: 0 };
     if (g) {
-      if (b(BTN.UP).pressed) dir = 'up';
-      else if (b(BTN.DOWN).pressed) dir = 'down';
-      else if (b(BTN.LEFT).pressed) dir = 'left';
-      else if (b(BTN.RIGHT).pressed) dir = 'right';
+      if (b(BTN.UP).pressed) dir = "up";
+      else if (b(BTN.DOWN).pressed) dir = "down";
+      else if (b(BTN.LEFT).pressed) dir = "left";
+      else if (b(BTN.RIGHT).pressed) dir = "right";
       else {
         const ax = g.axes && g.axes.length ? g.axes[0] : 0;
         const ay = g.axes && g.axes.length > 1 ? g.axes[1] : 0;
-        if (ay < -STICK_DZ) dir = 'up';
-        else if (ay > STICK_DZ) dir = 'down';
-        else if (ax < -STICK_DZ) dir = 'left';
-        else if (ax > STICK_DZ) dir = 'right';
+        if (ay < -STICK_DZ) dir = "up";
+        else if (ay > STICK_DZ) dir = "down";
+        else if (ax < -STICK_DZ) dir = "left";
+        else if (ax > STICK_DZ) dir = "right";
       }
     }
     const now = performance.now();
@@ -309,23 +333,23 @@ export function createTVNav(opts = {}) {
     }
 
     if (!g) return;
-    if (edge('A', b(BTN.A).pressed)) activate();
-    if (edge('B', b(BTN.B).pressed)) back();
-    if (edge('START', b(BTN.START).pressed)) advance();
+    if (edge("A", b(BTN.A).pressed)) activate();
+    if (edge("B", b(BTN.B).pressed)) back();
+    if (edge("START", b(BTN.START).pressed)) advance();
   }
 
   /* ---------------- 键盘（= 电视遥控器） ---------------- */
   const KEYDIR = {
-    ArrowUp: 'up',
-    ArrowDown: 'down',
-    ArrowLeft: 'left',
-    ArrowRight: 'right',
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
   };
   function onKey(e) {
     if (e.repeat) return; // 长按不该连发确认键（回车的默认重复会连跳好几步）
     const t = e.target;
     // 正在输入框里打字时不抢方向键（联机房间码、车手名）
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
     const dir = KEYDIR[e.key];
     if (dir) {
       if (!ui.activeScreen()) return; // 比赛中方向键另有用途
@@ -333,20 +357,20 @@ export function createTVNav(opts = {}) {
       if (move(dir)) e.preventDefault();
       return;
     }
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       if (!ui.activeScreen()) return;
       if (activate()) e.preventDefault();
       return;
     }
-    if (e.key === 'Escape' || e.key === 'Backspace') {
+    if (e.key === "Escape" || e.key === "Backspace") {
       if (!ui.activeScreen()) return;
       if (back()) e.preventDefault();
     }
   }
-  addEventListener('keydown', onKey);
+  addEventListener("keydown", onKey);
   // 鼠标一动就撤掉焦点框：同一台机器上键鼠与手柄混用时，不该留一个假焦点
   addEventListener(
-    'pointermove',
+    "pointermove",
     () => {
       if (st.index >= 0) {
         clearFocus();
@@ -387,7 +411,7 @@ export function createTVNav(opts = {}) {
     },
     stop() {
       cancelAnimationFrame(st.raf);
-      removeEventListener('keydown', onKey);
+      removeEventListener("keydown", onKey);
     },
   };
 }

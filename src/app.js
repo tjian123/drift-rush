@@ -351,7 +351,8 @@ const ui = new UI({
   },
   onFullscreen() {
     tv.requestFullscreen().then((ok) => {
-      if (!ok) ui.toast("这台设备不允许网页全屏，可手动按遥控器的全屏键", false);
+      if (!ok)
+        ui.toast("这台设备不允许网页全屏，可手动按遥控器的全屏键", false);
     });
   },
 });
@@ -1078,7 +1079,11 @@ function updateCamera(cs, racer, dt) {
   /* 调试机位覆写放在最后：设了它就完全接管相机（正常玩法下 camOverride 为 null，
      这一整段不会执行）。 */
   if (camOverride) {
-    cam.position.set(camOverride.pos[0], camOverride.pos[1], camOverride.pos[2]);
+    cam.position.set(
+      camOverride.pos[0],
+      camOverride.pos[1],
+      camOverride.pos[2],
+    );
     cam.up.set(0, 1, 0);
     cam.lookAt(camOverride.look[0], camOverride.look[1], camOverride.look[2]);
     cam.fov = camOverride.fov || 60;
@@ -1346,18 +1351,15 @@ function wireCtrlSettings() {
      只留键位与手柄说明，免得玩家看到一组永远点不到的开关。 */
   const tvDevice = tv.isTVDevice();
   for (const id of rowIds)
-    document.getElementById(id).classList.toggle(
-      "hide",
-      !touch.isTouch || tvDevice,
-    );
-  document.getElementById("row-keys").classList.toggle(
-    "hide",
-    touch.isTouch && !tvDevice,
-  );
-  document.getElementById("row-pad").classList.toggle(
-    "hide",
-    touch.isTouch && !tvDevice,
-  );
+    document
+      .getElementById(id)
+      .classList.toggle("hide", !touch.isTouch || tvDevice);
+  document
+    .getElementById("row-keys")
+    .classList.toggle("hide", touch.isTouch && !tvDevice);
+  document
+    .getElementById("row-pad")
+    .classList.toggle("hide", touch.isTouch && !tvDevice);
 
   /* 折叠：触屏设备默认收起（矮横屏下整块会跑出屏幕），桌面默认展开；
      用户手动展开/收起后记住选择。 */
@@ -1881,6 +1883,10 @@ function frame(now) {
       slip: Math.abs(r.vL),
       drifting: r.drifting,
       offroad: r.offroad,
+      boost: r.boostT > 0 ? 1 : 0,
+      brake: r.input.brake ? 1 : 0,
+      spin: r.spinT > 0 ? 1 : 0,
+      speed: Math.abs(r.vF),
     }));
     audio.updateEngines(engines);
     // 近车掠过：把非本地车投影到本地玩家周围

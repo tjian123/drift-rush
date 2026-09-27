@@ -1,447 +1,638 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#080b14">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080b14'/%3E%3Cpath d='M6 21 L13 9 L18 16 L21 12 L26 21 Z' fill='%23ffd479'/%3E%3C/svg%3E">
-<title>DRIFT RUSH · 多人漂移竞速</title>
-<link rel="stylesheet" href="/src/style.css">
-<script type="importmap">
-{ "imports": { "three": "/vendor/three.module.js" } }
-</script>
-<!-- WorkBuddy 云服务 SDK（IIFE 形态，暴露全局 WorkBuddyCloud）
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#080b14" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080b14'/%3E%3Cpath d='M6 21 L13 9 L18 16 L21 12 L26 21 Z' fill='%23ffd479'/%3E%3C/svg%3E"
+    />
+    <title>DRIFT RUSH · 多人漂移竞速</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <script type="importmap">
+      { "imports": { "three": "/vendor/three.module.js" } }
+    </script>
+    <!-- WorkBuddy 云服务 SDK（IIFE 形态，暴露全局 WorkBuddyCloud）
      本地化自 CDN 的 @dev 构建：与 vendor/three.module.js 同样自托管，
      避免同步 CDN 请求阻塞首屏（实测外部 CDN 会把页面卡在 loading 约 10 秒） -->
-<script src="/vendor/workbuddy-cloud.global.js"></script>
-</head>
-<body>
+    <script src="/vendor/workbuddy-cloud.global.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="vignette"></div>
+    <div id="speedlines"></div>
+    <div id="flash"></div>
 
-<div id="app"></div>
-<div id="vignette"></div>
-<div id="speedlines"></div>
-<div id="flash"></div>
+    <!-- ============================ 比赛 HUD ============================ -->
+    <div class="hud panel" id="lapbox">
+      <div class="row"><span>LAP</span><span id="lapnum">1 / 3</span></div>
+      <div id="curtime">0:00.00</div>
+      <div class="sub">
+        <span><i>BEST</i> <b id="besttime">--:--.--</b></span>
+        <span><i>LAST</i> <b id="lasttime">--:--.--</b></span>
+        <span><i>SCORE</i> <b id="score">0</b></span>
+      </div>
+    </div>
 
-<!-- ============================ 比赛 HUD ============================ -->
-<div class="hud panel" id="lapbox">
-  <div class="row"><span>LAP</span><span id="lapnum">1 / 3</span></div>
-  <div id="curtime">0:00.00</div>
-  <div class="sub">
-    <span><i>BEST</i> <b id="besttime">--:--.--</b></span>
-    <span><i>LAST</i> <b id="lasttime">--:--.--</b></span>
-    <span><i>SCORE</i> <b id="score">0</b></span>
-  </div>
-</div>
+    <div class="hud panel" id="mapwrap">
+      <canvas id="minimap" width="300" height="300"></canvas>
+    </div>
 
-<div class="hud panel" id="mapwrap"><canvas id="minimap" width="300" height="300"></canvas></div>
+    <div class="hud panel" id="ranks">
+      <h4>RANK</h4>
+      <div id="ranklist"></div>
+    </div>
 
-<div class="hud panel" id="ranks">
-  <h4>RANK</h4>
-  <div id="ranklist"></div>
-</div>
+    <div class="hud" id="speedbox">
+      <div id="gear">1</div>
+      <div id="speednum">0</div>
+      <div id="speedunit">KM / H</div>
+      <div id="rpmbar"><div id="rpmfill"></div></div>
+    </div>
 
-<div class="hud" id="speedbox">
-  <div id="gear">1</div>
-  <div id="speednum">0</div>
-  <div id="speedunit">KM / H</div>
-  <div id="rpmbar"><div id="rpmfill"></div></div>
-</div>
+    <div class="hud" id="driftbox">
+      <div id="driftlabel">DRIFT</div>
+      <div><span id="driftnum">0</span><span id="driftmult">×1.0</span></div>
+    </div>
 
-<div class="hud" id="driftbox">
-  <div id="driftlabel">DRIFT</div>
-  <div><span id="driftnum">0</span><span id="driftmult">×1.0</span></div>
-</div>
+    <!-- 道具槽（仅道具赛显示，点按 = 使用） -->
+    <div class="hud panel" id="item-slot" title="使用道具">
+      <span class="ic" id="item-icon"></span>
+      <small id="item-key">E</small>
+    </div>
 
-<!-- 道具槽（仅道具赛显示，点按 = 使用） -->
-<div class="hud panel" id="item-slot" title="使用道具">
-  <span class="ic" id="item-icon"></span>
-  <small id="item-key">E</small>
-</div>
+    <!-- 分屏 HUD -->
+    <div id="split-hud" class="hidden">
+      <div class="splitbox top">
+        <div class="sp"><span id="sp1-kmh">0</span><small>KM/H</small></div>
+        <div class="lp">
+          P1 · <b id="sp1-lap">1/3</b> · <span id="sp1-time">0:00.00</span
+          ><br />
+          <span id="sp1-rank">1 / 2</span>
+        </div>
+        <div class="sp-item" id="sp1-item" title="使用道具（右Shift）">
+          <span class="ic"></span>
+        </div>
+      </div>
+      <div class="splitdivider"></div>
+      <div class="splitbox bottom">
+        <div class="sp"><span id="sp2-kmh">0</span><small>KM/H</small></div>
+        <div class="lp">
+          P2 · <b id="sp2-lap">1/3</b> · <span id="sp2-time">0:00.00</span
+          ><br />
+          <span id="sp2-rank">2 / 2</span>
+        </div>
+        <div class="sp-item" id="sp2-item" title="使用道具（右Shift）">
+          <span class="ic"></span>
+        </div>
+      </div>
+    </div>
 
-<!-- 分屏 HUD -->
-<div id="split-hud" class="hidden">
-  <div class="splitbox top">
-    <div class="sp"><span id="sp1-kmh">0</span><small>KM/H</small></div>
-    <div class="lp">P1 · <b id="sp1-lap">1/3</b> · <span id="sp1-time">0:00.00</span><br>
-      <span id="sp1-rank">1 / 2</span></div>
-    <div class="sp-item" id="sp1-item" title="使用道具（右Shift）"><span class="ic"></span></div>
-  </div>
-  <div class="splitdivider"></div>
-  <div class="splitbox bottom">
-    <div class="sp"><span id="sp2-kmh">0</span><small>KM/H</small></div>
-    <div class="lp">P2 · <b id="sp2-lap">1/3</b> · <span id="sp2-time">0:00.00</span><br>
-      <span id="sp2-rank">2 / 2</span></div>
-    <div class="sp-item" id="sp2-item" title="使用道具（右Shift）"><span class="ic"></span></div>
-  </div>
-</div>
+    <div id="countdown"><div id="cdnum"></div></div>
+    <div id="toast"></div>
+    <div id="banner">
+      <div class="big"></div>
+      <div class="sm"></div>
+    </div>
+    <div id="achstack"></div>
 
-<div id="countdown"><div id="cdnum"></div></div>
-<div id="toast"></div>
-<div id="banner"><div class="big"></div><div class="sm"></div></div>
-<div id="achstack"></div>
+    <div id="netstat" class="hidden">
+      <span class="led"></span><span id="nettext">未连接</span>
+    </div>
 
-<div id="netstat" class="hidden"><span class="led"></span><span id="nettext">未连接</span></div>
+    <div id="keys">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶</span>
+      <span><kbd>SPACE</kbd> 手刹漂移</span>
+      <span><kbd>C</kbd> 视角</span>
+      <span><kbd>R</kbd> 复位</span>
+      <span><kbd>P</kbd> 暂停</span>
+      <span><kbd>M</kbd> 静音</span>
+    </div>
 
-<div id="keys">
-  <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶</span>
-  <span><kbd>SPACE</kbd> 手刹漂移</span>
-  <span><kbd>C</kbd> 视角</span>
-  <span><kbd>R</kbd> 复位</span>
-  <span><kbd>P</kbd> 暂停</span>
-  <span><kbd>M</kbd> 静音</span>
-</div>
-
-<!-- ============================ 触屏操控 ============================
+    <!-- ============================ 触屏操控 ============================
      左半屏 = 转向区：圈内按住拖动，拖动距离即转向量（不是「按下就打死」）
      右半屏 = 踏板簇：油门 / 刹车 / 手刹，拇指从油门滑动到刹车也算数 -->
-<div id="touch">
-  <div class="steerzone" id="steer-zone">
-    <div class="steerring" id="steer-ring">
-      <div class="ring-track"></div>
-      <div class="ring-knob" id="steer-knob"></div>
-      <div class="ring-cross"></div>
+    <div id="touch">
+      <div class="steerzone" id="steer-zone">
+        <div class="steerring" id="steer-ring">
+          <div class="ring-track"></div>
+          <div class="ring-knob" id="steer-knob"></div>
+          <div class="ring-cross"></div>
+        </div>
+        <div class="steerhint" id="steer-hint">按住拖动 · 控制方向</div>
+      </div>
+
+      <div class="pedalzone" id="pedal-zone">
+        <div class="tbtn pedal hand" id="thand">
+          <b>漂移</b><small>手刹</small>
+        </div>
+        <div class="tbtn pedal brake" id="tbrake">
+          <b>刹车</b><small>后退</small>
+        </div>
+        <div class="tbtn pedal gas" id="tgas">
+          <b>油门</b><small>加速</small>
+        </div>
+      </div>
+
+      <button id="tpause" aria-label="暂停">❚❚</button>
     </div>
-    <div class="steerhint" id="steer-hint">按住拖动 · 控制方向</div>
-  </div>
 
-  <div class="pedalzone" id="pedal-zone">
-    <div class="tbtn pedal hand" id="thand"><b>漂移</b><small>手刹</small></div>
-    <div class="tbtn pedal brake" id="tbrake"><b>刹车</b><small>后退</small></div>
-    <div class="tbtn pedal gas" id="tgas"><b>油门</b><small>加速</small></div>
-  </div>
+    <div id="rotate-hint">
+      <div class="ph">📱</div>
+      <div class="t1">请横屏游玩</div>
+      <div class="t2">横屏视野更宽，方向盘和踏板也更好按</div>
+    </div>
 
-  <button id="tpause" aria-label="暂停">❚❚</button>
-</div>
-
-<div id="rotate-hint">
-  <div class="ph">📱</div>
-  <div class="t1">请横屏游玩</div>
-  <div class="t2">横屏视野更宽，方向盘和踏板也更好按</div>
-</div>
-
-<!-- ============================ 主菜单（分步引导） ============================
+    <!-- ============================ 主菜单（分步引导） ============================
      不做长页滚动：三个步骤各占一屏内的一个面板，首屏只选赛道。
      1 赛道 → 2 赛制 → 3 车手，每步「下一步」推进，最后一步「开始比赛」。 -->
-<div class="screen" id="screen-menu">
-  <div class="menu-top">
-    <div class="logo">DRIFT RUSH</div>
-    <div class="menu-links">
-      <button class="btn ghost" id="btn-ach">成 就</button>
-      <button class="btn ghost" id="btn-board">排 行 榜</button>
-      <button class="btn ghost" id="btn-account">账 号</button>
-      <!-- 电视模式：把 HUD/菜单按观看距离放大（判据是距离不是分辨率）。
+    <div class="screen" id="screen-menu">
+      <div class="menu-top">
+        <div class="logo">DRIFT RUSH</div>
+        <div class="menu-links">
+          <button class="btn ghost" id="btn-ach">成 就</button>
+          <button class="btn ghost" id="btn-board">排 行 榜</button>
+          <button class="btn ghost" id="btn-account">账 号</button>
+          <button class="btn ghost" id="btn-send-feedback">发 送 反 馈</button>
+          <!-- 电视模式：把 HUD/菜单按观看距离放大（判据是距离不是分辨率）。
            全屏：投到电视后干掉地址栏，也顺带拿到整块屏幕。
            两者都不改变玩法，所以放在这里常驻，而不是塞进操作面板深处。 -->
-      <button class="btn ghost tvbtn" id="btn-tv" type="button" aria-pressed="false">电 视 模 式</button>
-      <button class="btn ghost tvbtn" id="btn-fs" type="button">全 屏</button>
-    </div>
-  </div>
-
-  <!-- 第 1 步：赛道（首屏只切赛道，背景动态演示的就是它） -->
-  <div class="steppane" id="step-track">
-    <div class="section" id="sec-tracks">
-      <div class="label">选择赛道</div>
-      <div class="trackwrap">
-        <button class="tracknav prev" id="track-prev" type="button" aria-label="上一批赛道">‹</button>
-        <div class="tracks" id="track-list"></div>
-        <button class="tracknav next" id="track-next" type="button" aria-label="下一批赛道">›</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 第 2 步：赛制 -->
-  <div class="steppane hide" id="step-format">
-    <div class="section" id="sec-format">
-      <div class="label">赛制</div>
-      <div class="seg" id="format-seg">
-        <button data-format="classic">竞速<small>纯比圈速与名次</small></button>
-        <button data-format="item">道具<small>道具箱 · 氮气/护盾/油污/导弹</small></button>
-      </div>
-    </div>
-    <div class="section" id="sec-mode">
-      <div class="label">模式</div>
-      <div class="seg" id="mode-seg">
-        <button data-mode="solo">单人计时<small>和 AI 车手比赛</small></button>
-        <button data-mode="split">本地分屏<small>同屏双人 + AI</small></button>
-        <button data-mode="online">在线联机<small>建房 / 输码加入</small></button>
-      </div>
-    </div>
-    <div class="section" id="sec-rules">
-      <div class="label">难度 / 圈数</div>
-      <div class="seg" id="level-seg">
-        <button data-level="easy">轻松</button>
-        <button data-level="normal">普通</button>
-        <button data-level="hard">困难</button>
-      </div>
-      <div class="seg" id="laps-seg">
-        <button data-laps="1">1 圈</button>
-        <button data-laps="3">3 圈</button>
-        <button data-laps="5">5 圈</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 第 3 步：车手与操作 -->
-  <div class="steppane hide" id="step-driver">
-    <div class="section" id="sec-driver">
-      <div class="label">车手 / 涂装</div>
-      <div class="field"><input id="name-input" maxlength="10" placeholder="输入车手名字"></div>
-      <div class="paints" id="paint-list"></div>
-    </div>
-
-    <!-- 操作设置：桌面端只展示键位，移动端才出现可调项 -->
-    <div class="section" id="ctrl-section">
-      <button class="label ctrl-toggle" id="ctrl-toggle" type="button" aria-expanded="true">
-        操作 <span class="labnote" id="ctrl-note"></span><span class="chev">▾</span>
-      </button>
-      <div class="ctrlgrid" id="ctrl-grid">
-        <div class="ctrlrow hide" id="row-autogas">
-          <span class="ck">自动油门</span>
-          <span class="cd2">不按油门也会自动加速，只需专心转向（踩刹车时自动让位）</span>
-          <button class="sw" id="sw-autogas" role="switch" aria-checked="true"><i></i></button>
+          <button
+            class="btn ghost tvbtn"
+            id="btn-tv"
+            type="button"
+            aria-pressed="false"
+          >
+            电 视 模 式
+          </button>
+          <button class="btn ghost tvbtn" id="btn-fs" type="button">
+            全 屏
+          </button>
         </div>
-        <div class="ctrlrow hide" id="row-hand">
-          <span class="ck">手别</span>
-          <span class="cd2">左撇子可把方向盘换到右侧</span>
-          <div class="seg mini" id="seg-hand">
-            <button data-hand="right">右手</button>
-            <button data-hand="left">左手</button>
+      </div>
+
+      <!-- 第 1 步：赛道（首屏只切赛道，背景动态演示的就是它） -->
+      <div class="steppane" id="step-track">
+        <div class="section" id="sec-tracks">
+          <div class="label">选择赛道</div>
+          <div class="trackwrap">
+            <button
+              class="tracknav prev"
+              id="track-prev"
+              type="button"
+              aria-label="上一批赛道"
+            >
+              ‹
+            </button>
+            <div class="tracks" id="track-list"></div>
+            <button
+              class="tracknav next"
+              id="track-next"
+              type="button"
+              aria-label="下一批赛道"
+            >
+              ›
+            </button>
           </div>
         </div>
-        <div class="ctrlrow hide" id="row-sens">
-          <span class="ck">转向灵敏度</span>
-          <span class="cd2">越高，同样的拖动距离给出的转向越大</span>
-          <div class="seg mini" id="seg-sens">
-            <button data-sens="0.7">稳</button>
-            <button data-sens="1">标准</button>
-            <button data-sens="1.5">灵敏</button>
+      </div>
+
+      <!-- 第 2 步：赛制 -->
+      <div class="steppane hide" id="step-format">
+        <div class="section" id="sec-format">
+          <div class="label">赛制</div>
+          <div class="seg" id="format-seg">
+            <button data-format="classic">
+              竞速<small>纯比圈速与名次</small>
+            </button>
+            <button data-format="item">
+              道具<small>道具箱 · 氮气/护盾/油污/导弹</small>
+            </button>
           </div>
         </div>
-        <div class="ctrlrow hide" id="row-tilt">
-          <span class="ck">陀螺仪转向</span>
-          <span class="cd2">左右倾斜手机转向，需要设备支持（iOS 需授权）</span>
-          <button class="sw" id="sw-tilt" role="switch" aria-checked="false"><i></i></button>
+        <div class="section" id="sec-mode">
+          <div class="label">模式</div>
+          <div class="seg" id="mode-seg">
+            <button data-mode="solo">
+              单人计时<small>和 AI 车手比赛</small>
+            </button>
+            <button data-mode="split">
+              本地分屏<small>同屏双人 + AI</small>
+            </button>
+            <button data-mode="online">
+              在线联机<small>建房 / 输码加入</small>
+            </button>
+          </div>
         </div>
-        <div class="ctrlrow" id="row-keys">
-          <span class="ck">键盘 / 鼠标</span>
-          <span class="cd2"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶 ·
-            <kbd>SPACE</kbd> 手刹 · <kbd>C</kbd> 视角 · <kbd>R</kbd> 复位 · <kbd>P</kbd> 暂停 · <kbd>M</kbd> 静音</span>
-        </div>
-        <div class="ctrlrow" id="row-pad">
-          <span class="ck">游戏手柄</span>
-          <span class="cd2">连上后任意按键即激活 · <kbd>左摇杆</kbd> 转向 · <kbd>RT</kbd> 油门 ·
-            <kbd>LT</kbd> 刹车 · <kbd>A</kbd> 手刹 · <kbd>X</kbd> 道具 · <kbd>Y</kbd> 视角 · <kbd>START</kbd> 暂停</span>
+        <div class="section" id="sec-rules">
+          <div class="label">难度 / 圈数</div>
+          <div class="seg" id="level-seg">
+            <button data-level="easy">轻松</button>
+            <button data-level="normal">普通</button>
+            <button data-level="hard">困难</button>
+          </div>
+          <div class="seg" id="laps-seg">
+            <button data-laps="1">1 圈</button>
+            <button data-laps="3">3 圈</button>
+            <button data-laps="5">5 圈</button>
+          </div>
         </div>
       </div>
+
+      <!-- 第 3 步：车手与操作 -->
+      <div class="steppane hide" id="step-driver">
+        <div class="section" id="sec-driver">
+          <div class="label">车手 / 涂装</div>
+          <div class="field">
+            <input id="name-input" maxlength="10" placeholder="输入车手名字" />
+          </div>
+          <div class="paints" id="paint-list"></div>
+        </div>
+
+        <!-- 操作设置：桌面端只展示键位，移动端才出现可调项 -->
+        <div class="section" id="ctrl-section">
+          <button
+            class="label ctrl-toggle"
+            id="ctrl-toggle"
+            type="button"
+            aria-expanded="true"
+          >
+            操作 <span class="labnote" id="ctrl-note"></span
+            ><span class="chev">▾</span>
+          </button>
+          <div class="ctrlgrid" id="ctrl-grid">
+            <div class="ctrlrow hide" id="row-autogas">
+              <span class="ck">自动油门</span>
+              <span class="cd2"
+                >不按油门也会自动加速，只需专心转向（踩刹车时自动让位）</span
+              >
+              <button
+                class="sw"
+                id="sw-autogas"
+                role="switch"
+                aria-checked="true"
+              >
+                <i></i>
+              </button>
+            </div>
+            <div class="ctrlrow hide" id="row-hand">
+              <span class="ck">手别</span>
+              <span class="cd2">左撇子可把方向盘换到右侧</span>
+              <div class="seg mini" id="seg-hand">
+                <button data-hand="right">右手</button>
+                <button data-hand="left">左手</button>
+              </div>
+            </div>
+            <div class="ctrlrow hide" id="row-sens">
+              <span class="ck">转向灵敏度</span>
+              <span class="cd2">越高，同样的拖动距离给出的转向越大</span>
+              <div class="seg mini" id="seg-sens">
+                <button data-sens="0.7">稳</button>
+                <button data-sens="1">标准</button>
+                <button data-sens="1.5">灵敏</button>
+              </div>
+            </div>
+            <div class="ctrlrow hide" id="row-tilt">
+              <span class="ck">陀螺仪转向</span>
+              <span class="cd2"
+                >左右倾斜手机转向，需要设备支持（iOS 需授权）</span
+              >
+              <button
+                class="sw"
+                id="sw-tilt"
+                role="switch"
+                aria-checked="false"
+              >
+                <i></i>
+              </button>
+            </div>
+            <div class="ctrlrow" id="row-keys">
+              <span class="ck">键盘 / 鼠标</span>
+              <span class="cd2"
+                ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶 ·
+                <kbd>SPACE</kbd> 手刹 · <kbd>C</kbd> 视角 · <kbd>R</kbd> 复位 ·
+                <kbd>P</kbd> 暂停 · <kbd>M</kbd> 静音</span
+              >
+            </div>
+            <div class="ctrlrow" id="row-pad">
+              <span class="ck">游戏手柄</span>
+              <span class="cd2"
+                >连上后任意按键即激活 · <kbd>左摇杆</kbd> 转向 ·
+                <kbd>RT</kbd> 油门 · <kbd>LT</kbd> 刹车 · <kbd>A</kbd> 手刹 ·
+                <kbd>X</kbd> 道具 · <kbd>Y</kbd> 视角 ·
+                <kbd>START</kbd> 暂停</span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤条 + 导航 -->
+      <div class="menu-nav">
+        <div class="steps" id="menu-steps"></div>
+        <div class="center navbtns">
+          <button class="btn ghost hide" id="btn-prev">上 一 步</button>
+          <button class="btn" id="btn-next">下 一 步</button>
+          <button class="btn hide" id="btn-go">开 始 比 赛</button>
+        </div>
+        <div class="cloudline" id="cloudline"></div>
+      </div>
+
+      <div class="foot" id="menu-foot"></div>
     </div>
-  </div>
 
-  <!-- 步骤条 + 导航 -->
-  <div class="menu-nav">
-    <div class="steps" id="menu-steps"></div>
-    <div class="center navbtns">
-      <button class="btn ghost hide" id="btn-prev">上 一 步</button>
-      <button class="btn" id="btn-next">下 一 步</button>
-      <button class="btn hide" id="btn-go">开 始 比 赛</button>
+    <!-- ============================ 联机大厅 ============================ -->
+    <div class="screen hide" id="screen-lobby">
+      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)">
+        在 线 联 机
+      </div>
+
+      <div class="section" id="lobby-connect">
+        <div class="label">创建房间</div>
+        <div class="center" style="margin-top: 8px">
+          <button class="btn" id="btn-create">创 建 房 间</button>
+        </div>
+        <div style="height: 22px"></div>
+        <div class="label">加入房间</div>
+        <div class="row2" style="margin-top: 8px">
+          <input
+            class="field"
+            id="join-code"
+            maxlength="4"
+            placeholder="输入 4 位房间码"
+            style="
+              padding: 13px;
+              border-radius: 11px;
+              border: 1px solid var(--line);
+              background: var(--panel);
+              color: var(--text);
+              font-family: inherit;
+              font-size: 22px;
+              font-weight: 800;
+              letter-spacing: 10px;
+              text-align: center;
+              outline: none;
+            "
+          />
+          <button class="btn ghost" id="btn-join">加 入</button>
+        </div>
+      </div>
+
+      <div class="section hide" id="lobby-room">
+        <div class="label">房间码</div>
+        <div class="roomcode" id="room-code">----</div>
+        <div class="hint" id="room-hint">把房间码发给朋友 · 最多 8 人</div>
+        <div class="label" style="margin-top: 20px">
+          车手 <span id="lobby-count" style="color: var(--amber)"></span>
+        </div>
+        <div class="playerlist" id="player-list"></div>
+        <div class="center">
+          <button class="btn" id="btn-race-start" disabled>开 始 比 赛</button>
+          <button class="btn ghost" id="btn-leave">离 开 房 间</button>
+        </div>
+        <div class="foot" id="lobby-foot"></div>
+      </div>
+
+      <div class="center">
+        <button class="btn ghost" id="btn-lobby-back">返 回</button>
+      </div>
     </div>
-    <div class="cloudline" id="cloudline"></div>
-  </div>
 
-  <div class="foot" id="menu-foot"></div>
-</div>
+    <!-- ============================ 结算 ============================ -->
+    <div class="screen hide" id="screen-result">
+      <div
+        class="logo"
+        style="font-size: clamp(28px, 6vw, 54px)"
+        id="result-title"
+      >
+        比 赛 结 束
+      </div>
+      <div class="tagline" id="result-sub"></div>
 
-<!-- ============================ 联机大厅 ============================ -->
-<div class="screen hide" id="screen-lobby">
-  <div class="logo" style="font-size:clamp(26px,5vw,44px)">在 线 联 机</div>
+      <div class="section">
+        <div class="label">名次</div>
+        <table class="result-table" id="result-table"></table>
+      </div>
 
-  <div class="section" id="lobby-connect">
-    <div class="label">创建房间</div>
-    <div class="center" style="margin-top:8px">
-      <button class="btn" id="btn-create">创 建 房 间</button>
+      <div class="section" id="result-ach-section">
+        <div class="label">本场解锁的成就</div>
+        <div class="achgrid" id="result-ach"></div>
+      </div>
+
+      <div class="center">
+        <button class="btn" id="btn-again">再 来 一 局</button>
+        <button class="btn ghost" id="btn-back-menu">返 回 菜 单</button>
+      </div>
     </div>
-    <div style="height:22px"></div>
-    <div class="label">加入房间</div>
-    <div class="row2" style="margin-top:8px">
-      <input class="field" id="join-code" maxlength="4" placeholder="输入 4 位房间码"
-             style="padding:13px;border-radius:11px;border:1px solid var(--line);
-                    background:var(--panel);color:var(--text);font-family:inherit;
-                    font-size:22px;font-weight:800;letter-spacing:10px;text-align:center;outline:none">
-      <button class="btn ghost" id="btn-join">加 入</button>
+
+    <!-- ============================ 暂停 / 成就 ============================ -->
+    <div class="screen hide" id="screen-pause">
+      <div
+        class="logo"
+        style="font-size: clamp(26px, 5vw, 44px)"
+        id="pause-title"
+      >
+        暂 停
+      </div>
+      <div class="section" id="ach-panel">
+        <div class="label">
+          成就 <span id="ach-count" style="color: var(--amber)"></span>
+        </div>
+        <div class="achgrid" id="ach-grid"></div>
+      </div>
+      <div class="center">
+        <button class="btn" id="btn-resume">继 续 比 赛</button>
+        <button class="btn ghost" id="btn-restart">重 新 开 始</button>
+        <button class="btn ghost" id="btn-quit">返 回 菜 单</button>
+      </div>
     </div>
-  </div>
 
-  <div class="section hide" id="lobby-room">
-    <div class="label">房间码</div>
-    <div class="roomcode" id="room-code">----</div>
-    <div class="hint" id="room-hint">把房间码发给朋友 · 最多 8 人</div>
-    <div class="label" style="margin-top:20px">车手 <span id="lobby-count" style="color:var(--amber)"></span></div>
-    <div class="playerlist" id="player-list"></div>
-    <div class="center">
-      <button class="btn" id="btn-race-start" disabled>开 始 比 赛</button>
-      <button class="btn ghost" id="btn-leave">离 开 房 间</button>
-    </div>
-    <div class="foot" id="lobby-foot"></div>
-  </div>
+    <!-- ============================ 账号（云服务） ============================ -->
+    <div class="screen hide" id="screen-account">
+      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)">账 号</div>
+      <div class="tagline" id="acc-tagline">
+        登录后成绩才会登上排行榜 · 不需要注册第二步
+      </div>
+      <div class="cloudbar" id="cloud-status"></div>
 
-  <div class="center"><button class="btn ghost" id="btn-lobby-back">返 回</button></div>
-</div>
-
-<!-- ============================ 结算 ============================ -->
-<div class="screen hide" id="screen-result">
-  <div class="logo" style="font-size:clamp(28px,6vw,54px)" id="result-title">比 赛 结 束</div>
-  <div class="tagline" id="result-sub"></div>
-
-  <div class="section">
-    <div class="label">名次</div>
-    <table class="result-table" id="result-table"></table>
-  </div>
-
-  <div class="section" id="result-ach-section">
-    <div class="label">本场解锁的成就</div>
-    <div class="achgrid" id="result-ach"></div>
-  </div>
-
-  <div class="center">
-    <button class="btn" id="btn-again">再 来 一 局</button>
-    <button class="btn ghost" id="btn-back-menu">返 回 菜 单</button>
-  </div>
-</div>
-
-<!-- ============================ 暂停 / 成就 ============================ -->
-<div class="screen hide" id="screen-pause">
-  <div class="logo" style="font-size:clamp(26px,5vw,44px)" id="pause-title">暂 停</div>
-  <div class="section" id="ach-panel">
-    <div class="label">成就 <span id="ach-count" style="color:var(--amber)"></span></div>
-    <div class="achgrid" id="ach-grid"></div>
-  </div>
-  <div class="center">
-    <button class="btn" id="btn-resume">继 续 比 赛</button>
-    <button class="btn ghost" id="btn-restart">重 新 开 始</button>
-    <button class="btn ghost" id="btn-quit">返 回 菜 单</button>
-  </div>
-</div>
-
-<!-- ============================ 账号（云服务） ============================ -->
-<div class="screen hide" id="screen-account">
-  <div class="logo" style="font-size:clamp(26px,5vw,44px)">账 号</div>
-  <div class="tagline" id="acc-tagline">登录后成绩才会登上排行榜 · 不需要注册第二步</div>
-  <div class="cloudbar" id="cloud-status"></div>
-
-  <!-- 未登录 -->
-  <div id="acc-guest">
-    <div class="section">
-
-      <!-- ============ 主流程：填邮箱 → 输验证码 ============
+      <!-- 未登录 -->
+      <div id="acc-guest">
+        <div class="section">
+          <!-- ============ 主流程：填邮箱 → 输验证码 ============
            登录与注册是同一件事的两面：先认邮箱，再认验证码。
            是「登录」还是「注册」由服务端在发码时告知（isExistingUser），
            界面据此把文案和字段切换掉 —— 绝不让玩家自己选。 -->
-      <div class="accpane" id="pane-code">
-        <div class="steps" id="code-steps">
-          <div class="stp on" data-step="1"><i>1</i><span>填写邮箱</span></div>
-          <div class="stp" data-step="2"><i>2</i><span>输入验证码</span></div>
-        </div>
+          <div class="accpane" id="pane-code">
+            <div class="steps" id="code-steps">
+              <div class="stp on" data-step="1">
+                <i>1</i><span>填写邮箱</span>
+              </div>
+              <div class="stp" data-step="2">
+                <i>2</i><span>输入验证码</span>
+              </div>
+            </div>
 
-        <div id="step-email">
-          <input class="accinput" id="otp-email" type="email" autocomplete="email"
-                 inputmode="email" placeholder="邮箱地址">
-          <div class="accacts">
-            <button class="btn" id="btn-send-code">继 续</button>
+            <div id="step-email">
+              <input
+                class="accinput"
+                id="otp-email"
+                type="email"
+                autocomplete="email"
+                inputmode="email"
+                placeholder="邮箱地址"
+              />
+              <div class="accacts">
+                <button class="btn" id="btn-send-code">继 续</button>
+              </div>
+              <div class="acclinks">
+                <button class="lnk" id="lnk-pwd">已有账号 · 用密码登录</button>
+              </div>
+            </div>
+
+            <div id="step-code" class="hide">
+              <div class="otpwho">
+                <span class="wk">验证码已发至</span>
+                <b id="otp-to">—</b>
+                <button class="lnk" id="lnk-change-email">换一个</button>
+              </div>
+              <input
+                class="accinput code"
+                id="otp-code"
+                inputmode="numeric"
+                maxlength="6"
+                autocomplete="one-time-code"
+                placeholder="6 位验证码"
+              />
+              <input
+                class="accinput hide"
+                id="otp-pwd"
+                type="password"
+                autocomplete="new-password"
+                placeholder="设置登录密码"
+              />
+              <div class="otpmode" id="otp-mode"></div>
+              <div class="accacts">
+                <button class="btn" id="btn-otp-login">登 录</button>
+              </div>
+              <div class="acclinks">
+                <button class="lnk" id="lnk-resend">没收到？重新发送</button>
+                <button class="lnk" id="lnk-back-email">返回上一步</button>
+              </div>
+            </div>
+
+            <div class="acchint" id="acc-hint"></div>
           </div>
-          <div class="acclinks">
-            <button class="lnk" id="lnk-pwd">已有账号 · 用密码登录</button>
+
+          <!-- ============ 次级入口：密码登录 ============ -->
+          <div class="accpane hide" id="pane-pwd">
+            <div class="panehead" id="pwd-head">用密码登录</div>
+            <input
+              class="accinput"
+              id="acc-email"
+              type="email"
+              autocomplete="username"
+              placeholder="邮箱"
+            />
+            <input
+              class="accinput"
+              id="acc-pwd"
+              type="password"
+              autocomplete="current-password"
+              placeholder="密码"
+            />
+            <div class="accacts">
+              <button class="btn" id="btn-pwd-login">登 录</button>
+            </div>
+            <div class="acclinks">
+              <button class="lnk" id="lnk-forgot">忘记密码</button>
+              <button class="lnk" id="lnk-back-code">
+                没有密码？用邮箱验证码
+              </button>
+            </div>
+            <div class="acchint" id="acc-hint-pwd"></div>
+          </div>
+
+          <!-- ============ 次级入口：重置密码 ============ -->
+          <div class="accpane hide" id="pane-reset">
+            <div class="panehead">重置密码</div>
+            <input
+              class="accinput"
+              id="reset-email"
+              type="email"
+              autocomplete="email"
+              placeholder="注册邮箱"
+            />
+            <div class="accacts">
+              <button class="btn ghost" id="btn-send-reset">
+                发 送 重 置 码
+              </button>
+            </div>
+            <input
+              class="accinput code"
+              id="reset-code"
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="6 位重置码"
+            />
+            <input
+              class="accinput"
+              id="reset-newpwd"
+              type="password"
+              autocomplete="new-password"
+              placeholder="新密码（至少 6 位）"
+            />
+            <div class="accacts">
+              <button class="btn" id="btn-do-reset">设 置 新 密 码</button>
+            </div>
+            <div class="acclinks">
+              <button class="lnk" id="lnk-back-code2">返回登录</button>
+            </div>
+            <div class="acchint" id="acc-hint-reset"></div>
           </div>
         </div>
-
-        <div id="step-code" class="hide">
-          <div class="otpwho">
-            <span class="wk">验证码已发至</span>
-            <b id="otp-to">—</b>
-            <button class="lnk" id="lnk-change-email">换一个</button>
-          </div>
-          <input class="accinput code" id="otp-code" inputmode="numeric" maxlength="6"
-                 autocomplete="one-time-code" placeholder="6 位验证码">
-          <input class="accinput hide" id="otp-pwd" type="password"
-                 autocomplete="new-password" placeholder="设置登录密码">
-          <div class="otpmode" id="otp-mode"></div>
-          <div class="accacts">
-            <button class="btn" id="btn-otp-login">登 录</button>
-          </div>
-          <div class="acclinks">
-            <button class="lnk" id="lnk-resend">没收到？重新发送</button>
-            <button class="lnk" id="lnk-back-email">返回上一步</button>
-          </div>
-        </div>
-
-        <div class="acchint" id="acc-hint"></div>
       </div>
 
-      <!-- ============ 次级入口：密码登录 ============ -->
-      <div class="accpane hide" id="pane-pwd">
-        <div class="panehead" id="pwd-head">用密码登录</div>
-        <input class="accinput" id="acc-email" type="email" autocomplete="username" placeholder="邮箱">
-        <input class="accinput" id="acc-pwd" type="password" autocomplete="current-password" placeholder="密码">
-        <div class="accacts">
-          <button class="btn" id="btn-pwd-login">登 录</button>
+      <!-- 已登录 -->
+      <div id="acc-user" class="hide">
+        <div class="section">
+          <div class="label">当前账号</div>
+          <div class="accwho" id="acc-who-email"></div>
+          <div class="label" style="margin-top: 16px">云端战绩</div>
+          <div class="acctable" id="acc-stats"></div>
+          <div class="center">
+            <button class="btn ghost" id="btn-sync">
+              同 步 成 就 与 档 案
+            </button>
+            <button class="btn ghost" id="btn-signout">退 出 登 录</button>
+          </div>
         </div>
-        <div class="acclinks">
-          <button class="lnk" id="lnk-forgot">忘记密码</button>
-          <button class="lnk" id="lnk-back-code">没有密码？用邮箱验证码</button>
-        </div>
-        <div class="acchint" id="acc-hint-pwd"></div>
       </div>
 
-      <!-- ============ 次级入口：重置密码 ============ -->
-      <div class="accpane hide" id="pane-reset">
-        <div class="panehead">重置密码</div>
-        <input class="accinput" id="reset-email" type="email" autocomplete="email" placeholder="注册邮箱">
-        <div class="accacts">
-          <button class="btn ghost" id="btn-send-reset">发 送 重 置 码</button>
-        </div>
-        <input class="accinput code" id="reset-code" inputmode="numeric" maxlength="6" placeholder="6 位重置码">
-        <input class="accinput" id="reset-newpwd" type="password" autocomplete="new-password" placeholder="新密码（至少 6 位）">
-        <div class="accacts">
-          <button class="btn" id="btn-do-reset">设 置 新 密 码</button>
-        </div>
-        <div class="acclinks">
-          <button class="lnk" id="lnk-back-code2">返回登录</button>
-        </div>
-        <div class="acchint" id="acc-hint-reset"></div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- 已登录 -->
-  <div id="acc-user" class="hide">
-    <div class="section">
-      <div class="label">当前账号</div>
-      <div class="accwho" id="acc-who-email"></div>
-      <div class="label" style="margin-top:16px">云端战绩</div>
-      <div class="acctable" id="acc-stats"></div>
       <div class="center">
-        <button class="btn ghost" id="btn-sync">同 步 成 就 与 档 案</button>
-        <button class="btn ghost" id="btn-signout">退 出 登 录</button>
+        <button class="btn ghost" id="btn-acc-back">返 回 菜 单</button>
       </div>
     </div>
-  </div>
 
-  <div class="center"><button class="btn ghost" id="btn-acc-back">返 回 菜 单</button></div>
-</div>
+    <!-- ============================ 排行榜 ============================ -->
+    <div class="screen hide" id="screen-board">
+      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)">排 行 榜</div>
+      <div class="section">
+        <div class="label">赛道</div>
+        <div class="seg" id="board-tracks"></div>
+        <table class="result-table" id="board-table"></table>
+        <div class="acchint" id="board-hint"></div>
+      </div>
+      <div class="center">
+        <button class="btn ghost" id="btn-board-back">返 回 菜 单</button>
+      </div>
+    </div>
 
-<!-- ============================ 排行榜 ============================ -->
-<div class="screen hide" id="screen-board">
-  <div class="logo" style="font-size:clamp(26px,5vw,44px)">排 行 榜</div>
-  <div class="section">
-    <div class="label">赛道</div>
-    <div class="seg" id="board-tracks"></div>
-    <table class="result-table" id="board-table"></table>
-    <div class="acchint" id="board-hint"></div>
-  </div>
-  <div class="center"><button class="btn ghost" id="btn-board-back">返 回 菜 单</button></div>
-</div>
+    <div id="fatal"></div>
 
-<div id="fatal"></div>
-
-<script type="module" src="/src/app.js"></script>
-</body>
+    <script type="module" src="/src/app.js"></script>
+  </body>
 </html>
