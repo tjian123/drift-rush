@@ -795,3 +795,60 @@ body.tv .seg button:hover { transform: none; }
   .screen .section { padding: 12px 13px; }
   .logo { font-size: clamp(22px, 4.4vw, 34px); }
 }
+
+/* ===========================================================================
+ * 操作帮助浮层（#screen-help）+ 入口按钮（#btn-help）+ 比赛中键位提示（#race-hint）
+ * 这些是为「出货版（itch.io / 原生壳）」补的便捷性：首次启动弹出、随时可唤出、
+ * 比赛中也能看到键位，降低新玩家上手成本，减少「不会玩就退款」。
+ * 文本用英文（面向欧美买家），键位图本身语言无关。
+ * =========================================================================*/
+.help-fab {
+  position: fixed; left: calc(14px * var(--ui)); top: calc(14px * var(--ui));
+  z-index: 30; width: calc(34px * var(--ui)); height: calc(34px * var(--ui));
+  border-radius: 50%; border: 1px solid var(--line-strong);
+  background: rgba(10,14,26,.62); color: var(--text);
+  font-size: calc(16px * var(--ui)); font-weight: 800; cursor: pointer;
+  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  display: none;                       /* 仅桌面/手柄模式显示（由 JS 控制 .show） */
+}
+.help-fab.show { display: flex; align-items: center; justify-content: center; }
+.help-fab:hover { border-color: var(--amber); color: var(--amber); }
+
+#screen-help {
+  position: fixed; inset: 0; z-index: 31; display: flex; align-items: center;
+  justify-content: center; padding: 20px;
+  background: rgba(4,7,14,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+#screen-help .help-card {
+  width: min(880px, 94vw); max-height: 92vh; overflow: auto;
+  background: linear-gradient(180deg, #121a2e, #0c1220);
+  border: 1px solid var(--line-strong); border-radius: 18px;
+  padding: clamp(18px, 3vw, 30px); box-shadow: 0 24px 60px rgba(0,0,0,.5);
+}
+.help-title { font-size: clamp(20px, 3.4vw, 30px); font-weight: 800; letter-spacing: 1px; }
+.help-sub { color: #9fb3d1; margin: 4px 0 16px; font-size: 13px; }
+.help-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+@media (max-width: 620px) { .help-grid { grid-template-columns: 1fr; } }
+.help-col { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px; padding: 12px 14px; }
+.help-h { font-weight: 700; margin-bottom: 8px; font-size: 13px; color: var(--amber); }
+.help-keys { font-size: 12px; line-height: 1.9; color: #cfe0ff; }
+.help-keys .dim, .help-col .dim { color: #7e90ad; }
+.help-touch { display: none; }        /* 触屏设备由 JS 加 .touch 显示 */
+.help-touch.touch { display: block; }
+#screen-help .btn { margin-top: 18px; width: 100%; }
+
+/* 比赛中键位提示：非触屏自动显示，6s 后淡出，按 H 再唤出 */
+.race-hint {
+  position: fixed; left: calc(14px * var(--ui)); bottom: calc(56px * var(--ui));
+  z-index: 22; max-width: 46vw;
+  background: rgba(10,14,26,.6); border: 1px solid var(--line-strong);
+  border-radius: 12px; padding: 10px 14px; color: #cfe0ff;
+  font-size: calc(11px * var(--ui)); line-height: 1.8;
+  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  transition: opacity .5s ease; opacity: 1;
+}
+.race-hint.hide { opacity: 0; pointer-events: none; }
+.race-hint kbd { margin: 0 1px; }
+/* 触屏模式不显示键盘提示 */
+body.touch-on .race-hint { display: none; }

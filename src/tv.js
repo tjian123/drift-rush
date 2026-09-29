@@ -67,13 +67,24 @@ export function createTV(opts = {}) {
     enabled = false;
     why = "url";
   } else {
-    const stored = readStored();
-    if (typeof stored === "boolean") {
-      enabled = stored;
-      why = "stored";
+    /* 原生壳可用 __DR_TV_OVERRIDE 显式覆盖（如 Windows PC 桌面模式要关电视模式）。
+       未设置时沿用旧逻辑：离线/打包（file: 或 __DR_TV_FORCE）一律电视，线上 https
+       不受影响。仍可用 ?tv=0 显式关闭。 */
+    if (typeof window.__DR_TV_OVERRIDE === "boolean") {
+      enabled = window.__DR_TV_OVERRIDE;
+      why = "override";
+    } else if (location.protocol === "file:" || window.__DR_TV_FORCE === true) {
+      enabled = true;
+      why = "offline";
     } else {
-      enabled = TV_UA_RE.test(navigator.userAgent);
-      why = enabled ? "ua" : "default";
+      const stored = readStored();
+      if (typeof stored === "boolean") {
+        enabled = stored;
+        why = "stored";
+      } else {
+        enabled = TV_UA_RE.test(navigator.userAgent);
+        why = enabled ? "ua" : "default";
+      }
     }
   }
 

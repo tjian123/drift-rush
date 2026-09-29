@@ -19,6 +19,7 @@ import {
   FORMATS,
   STORAGE,
 } from "./config.js";
+import { t, pick, applyI18n, setLang, getLang } from "./i18n.js";
 import { createItemSystem, ITEM_NAMES } from "./items.js";
 import { buildTrack, terrainHeight } from "./track.js";
 import { buildRoad } from "./road.js";
@@ -84,8 +85,12 @@ const saveKey = (k, v) => {
 };
 
 const prefs = loadPrefs();
+/* 离线 / 打包形态（__DR_OFFLINE 由 build-offline.mjs 注入）：不暴露联机。
+   若本机 localStorage 残留 mode=online（曾在在线版玩过），强制回退 solo，
+   避免启动即尝试连接不存在的服务器。 */
+if (window.__DR_OFFLINE && prefs.mode === "online") prefs.mode = "solo";
 if (!prefs.name)
-  prefs.name = DRIVER_NAMES[Math.floor(Math.random() * DRIVER_NAMES.length)];
+  prefs.name = pick(DRIVER_NAMES)[Math.floor(Math.random() * pick(DRIVER_NAMES).length)];
 
 /* ------------------------------------------------------------------ 全局态 */
 const game = {
@@ -267,6 +272,8 @@ const ui = new UI({
   },
   onGo(s) {
     Object.assign(prefs, s);
+    /* 离线形态下即便 UI 被绕过（如残留偏好），也强制走本地模式 */
+    if (window.__DR_OFFLINE && s.mode === "online") s.mode = "solo";
     if (s.mode === "online") {
       ui.showScreen("lobby");
       ui.showLobbyConnect();
@@ -301,11 +308,11 @@ const ui = new UI({
     audio.init();
     const probe = await probeRoom(s.room);
     if (!probe.exists) {
-      ui.toast("房间不存在，检查一下房间码", false);
+      ui.toast(t("toast.roomNotFound"), false);
       return;
     }
     if (probe.started) {
-      ui.toast("这局已经发车了", false);
+      ui.toast(t("toast.raceStarted"), false);
       return;
     }
     ui.setNetStatus("connecting", null, s.room, probe.players);
@@ -344,7 +351,7 @@ const ui = new UI({
   onTV() {
     const on = tv.toggle();
     ui.toast(
-      on ? "电视模式：界面已按观看距离放大" : "已回到标准界面尺寸",
+      on ? t("tv.on") : t("tv.off"),
       true,
       1800,
     );
@@ -352,7 +359,7 @@ const ui = new UI({
   onFullscreen() {
     tv.requestFullscreen().then((ok) => {
       if (!ok)
-        ui.toast("这台设备不允许网页全屏，可手动按遥控器的全屏键", false);
+        ui.toast(t("tv.noFs"), false);
     });
   },
 });
@@ -383,7 +390,7 @@ const cloudUI = new CloudUI({
   onSignedIn: () => syncCloudAfterLogin(),
   onSignedOut() {
     renderCloudLine();
-    ui.toast("已退出登录，本机成绩与成就仍然保留", true);
+    ui.toast(t("cloud.signedOut"), true);
   },
 });
 
@@ -406,20 +413,19 @@ function renderCloudLine() {
   const el = document.getElementById("cloudline");
   if (!el) return;
   if (cloud.status === "idle" || cloud.status === "loading") {
-    el.innerHTML = '<span class="cd wait"></span>正在连接云服务…';
+    el.innerHTML = '<span class="cd wait"></span>' + t("cloud.connecting");
     return;
   }
   if (cloud.status !== "ready") {
-    el.innerHTML =
-      '<span class="cd bad"></span>云服务不可用 · 离线模式，成绩与成就保存在本机';
+    el.innerHTML = '<span class="cd bad"></span>' + t("cloud.unavailable");
     return;
   }
   if (cloud.signedIn) {
     const email = (cloud.user && cloud.user.email) || "";
-    el.innerHTML = `<span class="cd ok"></span>已登录 ${escapeText(email)} · 圈速与成就已云端同步`;
-  } else {
     el.innerHTML =
-      '<span class="cd"></span>未登录 · 成绩只保存在本机，点「账号」登录后可上榜';
+      '<span class="cd ok"></span>' + t("cloud.loggedIn", escapeText(email));
+  } else {
+    el.innerHTML = '<span class="cd"></span>' + t("cloud.guest");
   }
 }
 
@@ -489,11 +495,11 @@ async function submitCloudResult({
   rank,
 }) {
   if (!cloud.available) {
-    ui.toast("云服务不可用，成绩已保存在本机", false);
+    ui.toast(t("cloud.saveLocal"), false);
     return null;
   }
   if (!cloud.signedIn) {
-    ui.toast("未登录 · 成绩只保存在本机（点「账号」登录后可上榜）", false);
+    ui.toast(t("cloud.localOnly"), false);
     return null;
   }
   if (!lapMs) return null;
@@ -508,9 +514,9 @@ async function submitCloudResult({
       mode,
       playerName: prefs.name,
     });
-    ui.toast("本场最佳圈速已上传排行榜", true);
+    ui.toast(t("cloud.uploaded"), true);
   } catch (e) {
-    ui.toast("成绩上传失败：" + (e.message || e), false);
+    ui.toast(t("cloud.uploadFail", e.message || e), false);
     return null;
   }
 
@@ -526,7 +532,7 @@ async function submitCloudResult({
       best_lap_ms: cur.best_lap_ms ? Math.min(cur.best_lap_ms, lapMs) : lapMs,
     });
   } catch (e) {
-    ui.toast("云端战绩更新失败：" + (e.message || e), false);
+    ui.toast(t("cloud.statsFail", e.message || e), false);
   }
   return row;
 }
@@ -609,7 +615,7 @@ function ensureAttract() {
     (CFG.SEED + 777 + Math.round(trackObjects[game.trackId].total)) | 0,
   );
   for (let i = 0; i < 3; i++) {
-    const name = DRIVER_NAMES[Math.floor(rng() * DRIVER_NAMES.length)];
+    const name = pick(DRIVER_NAMES)[Math.floor(rng() * pick(DRIVER_NAMES).length)];
     const r = makeRacer({
       id: "demo" + i,
       name,
@@ -730,7 +736,7 @@ function useLocalItem(slot) {
   const r = game.locals[slot - 1];
   if (!r || !game.items || game.phase !== "race") return;
   const it = game.items.useItem(r, game.racers);
-  if (it) ui.toast(`使用 ${ITEM_NAMES[it] || it}`, true, 900);
+  if (it) ui.toast(t("item.use2", pick(ITEM_NAMES[it]) || it), true, 900);
 }
 
 function startRace({ mode, track, laps, level, format }) {
@@ -814,12 +820,12 @@ function startRace({ mode, track, laps, level, format }) {
     };
     const hint =
       mode === MODES.SPLIT
-        ? "P1 按 E · P2 按右Shift 使用道具，也可点击道具槽"
+        ? t("item.hint.split")
         : touch.isTouch
-          ? "吃到道具箱后点击左下道具槽使用"
-          : "按 E（或手柄 X）使用道具";
+          ? t("item.hint.touch")
+          : t("item.hint.kb");
     setTimeout(
-      () => ui.toast(`道具赛！吃道具箱抽道具 · ${hint}`, true, 4200),
+      () => ui.toast(t("item.announce", hint), true, 4200),
       600,
     );
   }
@@ -829,7 +835,7 @@ function startRace({ mode, track, laps, level, format }) {
     prefs.touchTold = true;
     saveKey("dr-touch-told", true);
     setTimeout(
-      () => ui.toast("左侧按住拖动 = 转向 · 右侧踏板 = 油门/刹车", true, 4200),
+      () => ui.toast(t("touch.firstHint"), true, 4200),
       500,
     );
   }
@@ -839,7 +845,7 @@ function startRace({ mode, track, laps, level, format }) {
   for (let i = 0; i < playerCount; i++) {
     const r = makeRacer({
       id: i === 0 ? "me" : "me2",
-      name: i === 0 ? prefs.name || "你" : "P2",
+      name: i === 0 ? prefs.name || t("name.you") : "P2",
       paint: i === 0 ? prefs.paint : (prefs.paint + 4) % PAINTS.length,
       kind: i === 0 ? "local" : "split2",
       slot: i,
@@ -856,11 +862,11 @@ function startRace({ mode, track, laps, level, format }) {
   if (mode !== MODES.ONLINE) {
     const lv = AI_LEVELS[level] || AI_LEVELS.normal;
     const rng = makeRng(CFG.SEED + track.length * 13);
-    const usedNames = new Set(DRIVER_NAMES.slice(0, 0));
+    const usedNames = new Set(pick(DRIVER_NAMES).slice(0, 0));
     for (let i = 0; i < lv.count; i++) {
-      let name = DRIVER_NAMES[Math.floor(rng() * DRIVER_NAMES.length)];
+      let name = pick(DRIVER_NAMES)[Math.floor(rng() * pick(DRIVER_NAMES).length)];
       while (usedNames.has(name))
-        name = DRIVER_NAMES[Math.floor(rng() * DRIVER_NAMES.length)];
+        name = pick(DRIVER_NAMES)[Math.floor(rng() * pick(DRIVER_NAMES).length)];
       usedNames.add(name);
       const paint = (i + 1 + Math.floor(rng() * 3)) % PAINTS.length;
       const r = makeRacer({
@@ -890,7 +896,7 @@ function startRace({ mode, track, laps, level, format }) {
   if (mode === MODES.ONLINE) {
     game.phase = "waiting";
     ui.showNet = true;
-    ui.toast("等待房主发车…", true, 4000);
+    ui.toast(t("online.waitHost"), true, 4000);
     ui.showScreen("lobby");
     return;
   }
@@ -1032,12 +1038,12 @@ function updateCamera(cs, racer, dt) {
     cam.position.copy(cs.tmp);
     cs.look.set(racer.x + sh * 26, racer.y + 1.05, racer.z + ch * 26);
   } else if (cs.mode === 2) {
-    const t = performance.now() * 0.00022;
+    const tt = performance.now() * 0.00022; // 不能叫 t：会遮蔽 i18n 翻译函数
     const r = 17 + speedNorm * 5;
     cs.tmp.set(
-      racer.x + Math.cos(t) * r,
-      racer.y + 6.5 + Math.sin(t * 1.7) * 1.6,
-      racer.z + Math.sin(t) * r,
+      racer.x + Math.cos(tt) * r,
+      racer.y + 6.5 + Math.sin(tt * 1.7) * 1.6,
+      racer.z + Math.sin(tt) * r,
     );
     cam.position.x = damp(cam.position.x, cs.tmp.x, 2.6, dt);
     cam.position.y = damp(cam.position.y, cs.tmp.y, 2.6, dt);
@@ -1190,7 +1196,7 @@ addEventListener("keydown", (e) => {
   }
   if (e.code === "KeyM") {
     audio.setMuted(!audio.muted);
-    ui.toast(audio.muted ? "已静音" : "声音开启", true, 900);
+    ui.toast(audio.muted ? t("muted.on") : t("muted.off"), true, 900);
   }
   if (e.code === "KeyP") {
     togglePause();
@@ -1238,7 +1244,7 @@ function resetLocalRacers() {
     r.yawRate = 0;
     r.offroad = 0;
   }
-  ui.toast("已复位到赛道", true, 900);
+  ui.toast(t("reset.track"), true, 900);
 }
 
 /** 切换相机视角（键盘 C / 手柄 Y） */
@@ -1246,7 +1252,7 @@ function cycleCamera() {
   const cs = game.mode === MODES.SPLIT && game.locals.length > 1 ? null : camA;
   if (cs) {
     cs.mode = (cs.mode + 1) % CFG.CAM_MODES.length;
-    ui.toast(`视角：${CFG.CAM_MODES[cs.mode]}`, true, 900);
+    ui.toast(t("cam.mode", pick(CFG.CAM_MODES)[cs.mode]), true, 900);
   } else {
     camA.mode = (camA.mode + 1) % CFG.CAM_MODES.length;
     camB.mode = camA.mode;
@@ -1309,11 +1315,7 @@ const pad = createPadController({
   onActivate() {
     audio.init();
     // 连上就顺手告诉玩家菜单怎么走：不然进了菜单会发现手柄「失灵」
-    ui.toast(
-      `${pad.name} 已连接 · 十字键选择 · A 确认 · B 返回 · START 开始`,
-      true,
-      2800,
-    );
+    ui.toast(t("pad.connected", pad.name), true, 2800);
   },
   onDeactivate() {
     // 拔线瞬间清空本地输入，避免残留油门让车自己跑
@@ -1383,10 +1385,10 @@ function wireCtrlSettings() {
 
   if (note) {
     note.textContent = touch.isTouch
-      ? "左侧按住拖动转向 · 右侧踏板加速刹车"
+      ? t("ctrl.touchHint")
       : navigator.getGamepads
-        ? "键盘 WASD 驾驶 · 也可连接手柄"
-        : "当前设备使用键盘操作";
+        ? t("ctrl.kbHint")
+        : t("ctrl.kbOnly");
   }
 
   const swAuto = document.getElementById("sw-autogas");
@@ -1413,9 +1415,7 @@ function wireCtrlSettings() {
     touch.applySettings({ autoGas: !touch.settings.autoGas });
     paint();
     ui.toast(
-      touch.settings.autoGas
-        ? "自动油门：开（只需转向）"
-        : "自动油门：关（需按住油门）",
+      touch.settings.autoGas ? t("autogas.on") : t("autogas.off"),
       true,
       1600,
     );
@@ -1425,10 +1425,10 @@ function wireCtrlSettings() {
     touch.applySettings({ tilt: next });
     paint();
     if (next && !touch.settings.tilt)
-      ui.toast("本设备不支持陀螺仪，已自动关闭", false, 2000);
+      ui.toast(t("tilt.unsupported"), false, 2000);
     else
       ui.toast(
-        next ? "陀螺仪转向：开（以当前姿态为零点）" : "陀螺仪转向：关",
+        next ? t("tilt.on") : t("tilt.off"),
         true,
         1600,
       );
@@ -1496,10 +1496,10 @@ net.onBegin = (msg) => {
   startOnlineRace(msg.track || net.track, msg.laps || net.laps, delay);
 };
 net.onEvent = (msg) => {
-  if (msg.kind === "join") ui.toast(`${msg.name} 加入了房间`, true, 1600);
-  else if (msg.kind === "leave") ui.toast(`${msg.name} 离开了`, true, 1600);
+  if (msg.kind === "join") ui.toast(t("online.join", msg.name), true, 1600);
+  else if (msg.kind === "leave") ui.toast(t("online.leave", msg.name), true, 1600);
   else if (msg.kind === "finish" && msg.id !== net.myId) {
-    ui.toast(`${msg.name} 完赛 ${fmtTime(msg.time)}`, true, 2000);
+    ui.toast(t("online.finish", msg.name, fmtTime(msg.time)), true, 2000);
   }
 };
 net.onResults = (results) => {
@@ -1521,11 +1521,11 @@ net.onResults = (results) => {
 };
 net.onError = (msg) => {
   const map = {
-    room_not_found: "房间不存在，检查房间码",
-    room_full: "房间满了（最多 8 人）",
-    race_started: "这局已经发车了",
+    room_not_found: t("online.roomNotFound"),
+    room_full: t("online.roomFull"),
+    race_started: t("online.raceStarted"),
   };
-  ui.toast(map[msg] || "联机错误：" + msg, false, 2600);
+  ui.toast(map[msg] || t("online.error", msg), false, 2600);
   ui.setNetStatus("error", net.transport, net.room, 0);
   if (map[msg]) {
     net.close();
@@ -1570,7 +1570,7 @@ function startOnlineRace(trackId, laps, delayMs) {
     if (id === net.myId) {
       const r = makeRacer({
         id: "me",
-        name: prefs.name || "你",
+        name: prefs.name || t("name.you"),
         paint: prefs.paint,
         kind: "local",
         slot: i,
@@ -1613,10 +1613,10 @@ function startOnlineRace(trackId, laps, delayMs) {
 function showOnlineResults(rows) {
   const mine = rows.filter((r) => r.id === net.myId);
   const best = mine[0];
-  const title = best && best.rank === 1 ? "冠 军 ！" : "比 赛 结 束";
+  const title = best && best.rank === 1 ? t("result.champion") : t("result.finished");
   const sub = best
-    ? `你排名第 ${best.rank} / ${rows.length} · 总用时 ${fmtTime(best.finishTime)}`
-    : `${rows.length} 位车手完赛`;
+    ? t("result.youRank", best.rank, rows.length, fmtTime(best.finishTime))
+    : t("result.nFinished", rows.length);
   const unlocked = [];
   ach.endRace({
     localRacers: game.locals,
@@ -1658,11 +1658,16 @@ function showLocalResults() {
   }));
   const mine = ranked.filter((r) => localIds.has(r.id));
   const best = mine.reduce((a, b) => (a.rank <= b.rank ? a : b), mine[0]);
-  const title = best && best.rank === 1 ? "冠 军 ！" : "比 赛 结 束";
+  const title = best && best.rank === 1 ? t("result.champion") : t("result.finished");
   const sub =
     mine.length > 1
-      ? mine.map((r) => `${r.name} 第 ${r.rank} 名`).join(" · ")
-      : `你排名第 ${best ? best.rank : "-"} / ${ranked.length} · 最佳单圈 ${fmtTime(best ? best.bestLap : 0)}`;
+      ? mine.map((r) => t("result.ranked", r.name, r.rank)).join(" · ")
+      : t(
+          "result.bestLap",
+          best ? best.rank : "-",
+          ranked.length,
+          fmtTime(best ? best.bestLap : 0)
+        );
   ach.endRace({
     localRacers: game.locals,
     allRacers: game.racers,
@@ -1729,9 +1734,9 @@ function frame(now) {
   /* ---- 海面 / 云动画：赛道自带 water 配置时才存在，菜单动态背景里也要转起来。
      天空与海面共用同一个 uTime 引用，云的移动和浪的起伏天然同步。 ---- */
   if (game.world) {
-    const t = now / 1000;
-    if (game.world.ocean) game.world.ocean.material.uniforms.uTime.value = t;
-    if (game.world.sky) game.world.sky.material.uniforms.uTime.value = t;
+    const uTime = now / 1000; // 不能叫 t：会遮蔽 i18n 翻译函数
+    if (game.world.ocean) game.world.ocean.material.uniforms.uTime.value = uTime;
+    if (game.world.sky) game.world.sky.material.uniforms.uTime.value = uTime;
   }
 
   /* ---- 菜单动态背景：演示车巡航；离开菜单（开局/进大厅）自动清理 ---- */
@@ -1772,12 +1777,12 @@ function frame(now) {
           const local = localIds.has(r.id);
           if (!local) return;
           if (type === "get")
-            ui.toast(`获得道具：${ITEM_NAMES[r.item] || r.item}`, true, 1400);
+            ui.toast(t("item.got", pick(ITEM_NAMES[r.item]) || r.item), true, 1400);
           else if (type === "spun") {
-            ui.toast("被打滑了！", false, 1200);
+            ui.toast(t("hit.spin"), false, 1200);
             audio.hit(0.7);
           } else if (type === "shielded")
-            ui.toast("护盾挡下了攻击", true, 1200);
+            ui.toast(t("hit.shield"), true, 1200);
         });
       }
 
@@ -1859,7 +1864,7 @@ function frame(now) {
       ui.updateRaceHud(game.locals[0], game.laps, prefs.bests[game.trackId]);
     }
     if (game.locals[0].wrongWay && game.phase === "race")
-      ui.toast("↑ 方向反了，掉头！", false, 400);
+      ui.toast(t("reverse.warn"), false, 400);
 
     // 完美起步：发车信号后 0.35 秒内给油
     if (
@@ -1921,7 +1926,7 @@ function frame(now) {
         game.resultsFallbackAt = performance.now() + 9000;
         const me = game.locals[0];
         net.finish(me.totalTime);
-        ui.toast("完赛！等待其他车手…", true, 4000);
+        ui.toast(t("finish.wait"), true, 4000);
       }
       if (game.waitingResults && performance.now() > game.resultsFallbackAt) {
         // 服务器没给结果也别卡住：用本地已知信息出结算
@@ -2028,7 +2033,7 @@ function stepAll(dt, controlAllowed) {
       if (localIds.has(r.id)) audio.hit(impact);
     },
     onDriftBank: (r, bank) => {
-      if (localIds.has(r.id)) ui.toast(`漂移 +${bank}`, true, 900);
+      if (localIds.has(r.id)) ui.toast(t("drift.bank", bank), true, 900);
     },
     onContact: (a, b, s) => {
       if (localIds.has(a.id) || localIds.has(b.id)) audio.hit(s * 0.8);
@@ -2170,6 +2175,22 @@ function boot() {
   ui.showScreen("menu");
   ui.renderAchievements(ach);
   wireCtrlSettings();
+  // 多语言：把整页 [data-i18n*] 元素翻成当前语言，并接好 EN/中 切换按钮
+  applyI18n();
+  const langBtn = document.getElementById("btn-lang");
+  if (langBtn) {
+    langBtn.textContent = getLang() === "zh" ? "EN" : "中";
+    langBtn.addEventListener("click", () => {
+      setLang(getLang() === "en" ? "zh" : "en");
+      langBtn.textContent = getLang() === "zh" ? "EN" : "中";
+      /* 静态文案由 applyI18n 就地替换；但赛道卡 / 菜单底栏 / 成就面板 / 云端状态行
+         是 JS 构建出来的（渲染时就已定稿），不重建一次会留在旧语言。 */
+      ui.buildMenu(prefs, prefs.bests, ach);
+      ui.buildTrackCards(trackObjects, prefs.bests, game.trackId);
+      ui.renderAchievements(ach);
+      renderCloudLine();
+    });
+  }
   /* 电视模式：按钮选中态 + 自动开启时给一次说明。
      自动开启（UA 识别为电视 / URL 带 ?tv=1）用户是看不见开关状态的，
      不给提示的话「界面突然变大」会被当成 bug。 */
@@ -2177,7 +2198,7 @@ function boot() {
   tv.fit(); // 菜单内容刚建好，这时量出来的高度才有意义（见 tv.js 的 fit 注释）
   if (tv.enabled && tv.reason !== "manual")
     ui.toast(
-      `已按电视模式放大界面（${tv.reason === "ua" ? "识别为电视设备" : "链接参数"}）· 右上角可关闭`,
+      t("tv.autoOn", tv.reason === "ua" ? t("tv.reasonUa") : t("tv.reasonUrl")),
       true,
       3600,
     );
@@ -2208,7 +2229,7 @@ function boot() {
       window.__DR_CLOUD_READY__ = status;
       if (status === "ready" && cloud.signedIn) {
         syncCloudAfterLogin().catch((e) =>
-          ui.toast("云端同步失败：" + (e.message || e), false),
+          ui.toast(t("cloud.syncFail", e.message || e), false),
         );
       }
     })

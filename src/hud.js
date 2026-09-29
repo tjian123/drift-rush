@@ -14,6 +14,7 @@ import {
 import { ITEM_ICONS, ITEM_NAMES, ITEM_SEQ } from "./items.js";
 import { fmtTime } from "./util.js";
 import { analytics } from "./analytics.js";
+import { t, pick } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -125,6 +126,10 @@ export class UI {
       pauseTitle: $("pause-title"),
       achPanel: $("ach-panel"),
       touch: $("touch"),
+      helpScreen: $("screen-help"),
+      helpFab: $("btn-help"),
+      helpClose: $("btn-help-close"),
+      raceHint: $("race-hint"),
     };
     this.mm = this.el.minimap.getContext("2d");
     this.mapCache = new Map();
@@ -158,6 +163,8 @@ export class UI {
     // 联机状态指示条：只在联机模式或大厅里出现
     this.el.netstat.classList.toggle("hidden", !this.showNet);
     if (!inRace) this.el.splitHud.classList.add("hidden");
+    // 进入比赛（非触屏）时弹出键位提示，降低桌面玩家上手成本
+    if (inRace && !document.body.classList.contains("touch-on")) this.showRaceHint();
   }
 
   setSplit(on) {
@@ -174,7 +181,7 @@ export class UI {
     if (!b) return;
     b.classList.toggle("on", !!on);
     b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.textContent = on ? "电 视 模 式 · 开" : "电 视 模 式";
+    b.textContent = on ? t("tvMode.on") : t("tvMode.off");
   }
 
   /** 当前可见的全屏界面（menu/lobby/pause/result/account/board），比赛中为 null。
@@ -193,15 +200,16 @@ export class UI {
   /* 1 赛道 → 2 赛制 → 3 车手。首屏只切赛道，每步一屏内放得下，
      不依赖滚动（移动端矮横屏也全部可达）。 */
   static MENU_STEPS = ["step-track", "step-format", "step-driver"];
-  static STEP_NAMES = ["赛道", "赛制", "车手"];
+  // 存的是 i18n key，渲染时再 t() 取值（参数名不能再用 t，避免遮蔽翻译函数）
+  static STEP_NAMES = ["step.track", "step.format", "step.driver"];
 
   setMenuStep(i) {
     i = Math.max(0, Math.min(UI.MENU_STEPS.length - 1, i));
     this.menuStep = i;
     UI.MENU_STEPS.forEach((id, k) => $(id).classList.toggle("hide", k !== i));
     $("menu-steps").innerHTML = UI.STEP_NAMES.map(
-      (t, k) =>
-        `<button class="stp${k === i ? " on" : ""}" data-step="${k}">${k + 1} ${t}</button>`,
+      (key, k) =>
+        `<button class="stp${k === i ? " on" : ""}" data-step="${k}">${k + 1} ${t(key)}</button>`,
     ).join("");
     $("btn-prev").classList.toggle("hide", i === 0);
     const last = i === UI.MENU_STEPS.length - 1;
@@ -218,6 +226,73 @@ export class UI {
     }
     this.setMenuStep(this.menuStep + 1);
     return true;
+  }
+
+  /* ==================================================== 操作帮助浮层 */
+  /** 桌面/手柄模式才显示「?」入口：TV 用遥控器、触屏用自带操控 UI，不需要它 */
+  syncHelpFab() {
+    if (!this.el.helpFab) return;
+    const body = document.body;
+    const show = !body.classList.contains("tv") && !body.classList.contains("touch-on");
+    this.el.helpFab.classList.toggle("show", show);
+  }
+
+  showHelp() {
+    if (!this.el.helpScreen) return;
+    // 触屏设备显示「触屏」一栏，否则隐藏（桌面/手柄不需要）
+    const isTouch = document.body.classList.contains("touch-on") ||
+      (("ontouchstart" in window) || navigator.maxTouchPoints > 0);
+    const tc = this.el.helpScreen.querySelector(".help-touch");
+    if (tc) tc.classList.toggle("touch", isTouch);
+    this.el.helpScreen.classList.remove("hide");
+  }
+
+  hideHelp() {
+    if (this.el.helpScreen) this.el.helpScreen.classList.add("hide");
+  }
+
+  /** 首次启动（仅桌面/手柄、且未读过）自动弹教学浮层；TV/触屏不自弹，避免无法便捷关闭 */
+  maybeShowFirstLaunchHelp() {
+    let seen = false;
+    try { seen = localStorage.getItem("dr-tut-done") === "1"; } catch (e) {}
+    const body = document.body;
+    const ok = !body.classList.contains("tv") && !body.classList.contains("touch-on");
+    if (!seen && ok) this.showHelp();
+  }
+
+  /* ==================================================== 比赛中键位提示 */
+  showRaceHint() {
+    if (!this.el.raceHint) return;
+    const mode = this.state.mode;
+    let html =
+      '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ' + t("raceHint.drive") + ' · ' +
+      '<kbd>Space</kbd> ' + t("raceHint.hb") + ' · <kbd>C</kbd> ' + t("raceHint.cam") +
+      ' · <kbd>P</kbd> ' + t("raceHint.pause");
+    if (mode === "split") {
+      html =
+        '<b>P1</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · ' +
+        '<b>P2</b> <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> + <kbd>R-Shift</kbd> ' +
+        t("raceHint.hb");
+    }
+    html += '　<span class="dim">' + t("raceHint.hide", '<kbd>H</kbd>') + '</span>';
+    this.el.raceHint.innerHTML = html;
+    this.el.raceHint.classList.remove("hide");
+    clearTimeout(this._raceHintTimer);
+    this._raceHintTimer = setTimeout(() => {
+      this.el.raceHint.classList.add("hide");
+    }, 6000);
+  }
+
+  toggleRaceHint() {
+    if (!this.el.raceHint) return;
+    const hidden = this.el.raceHint.classList.contains("hide");
+    if (hidden) {
+      this.el.raceHint.classList.remove("hide");
+      clearTimeout(this._raceHintTimer);
+      this._raceHintTimer = setTimeout(() => this.el.raceHint.classList.add("hide"), 6000);
+    } else {
+      this.el.raceHint.classList.add("hide");
+    }
   }
 
   /* ==================================================== 菜单构建 */
@@ -244,7 +319,7 @@ export class UI {
       const d = document.createElement("div");
       d.className = "paint" + (p.id === this.state.paint ? " on" : "");
       d.style.background = "#" + p.body.toString(16).padStart(6, "0");
-      d.title = p.name;
+      d.title = pick(p.name);
       d.dataset.paint = p.id;
       d.addEventListener("click", () => {
         this.state.paint = p.id;
@@ -259,19 +334,22 @@ export class UI {
 
     this.renderMenuFoot(bests, achievements);
     this.setMenuStep(0); // 每次回到菜单都从「选赛道」开始
+    this.syncHelpFab();
+    this.maybeShowFirstLaunchHelp();
   }
 
   renderMenuFoot(bests, achievements) {
     const bits = [];
     for (const id of TRACK_ORDER) {
-      const t = TRACKS[id];
-      bits.push(`${t.name} <b>${bests[id] ? fmtTime(bests[id]) : "--:--"}</b>`);
+      /* 局部变量不能叫 t：会遮蔽 i18n 的翻译函数 t()，下面 t("menuFoot") 就炸了 */
+      const meta = TRACKS[id];
+      bits.push(`${pick(meta.name)} <b>${bests[id] ? fmtTime(bests[id]) : "--:--"}</b>`);
     }
     const a = achievements;
     this.el.menuFoot.innerHTML =
       bits.join(" · ") +
       "<br>" +
-      `成就 <b>${a.count()} / ${a.total()}</b> · 支持 8 人联机 · 全程序化生成，零外部素材`;
+      t("menuFoot", `<b>${a.count()} / ${a.total()}</b>`);
   }
 
   /** 赛道卡片（含迷你赛道图形与本赛道最佳圈速） */
@@ -279,11 +357,11 @@ export class UI {
     this.el.trackList.innerHTML = "";
     for (const id of TRACK_ORDER) {
       const track = trackObjects[id];
-      const t = TRACKS[id];
+      const meta = TRACKS[id]; // 不能叫 t：会遮蔽翻译函数
       const card = document.createElement("button");
       card.className = "trackcard" + (id === selected ? " on" : "");
       card.dataset.track = id;
-      card.title = `${t.desc} · 周长 ${Math.round(track.total)}m`;
+      card.title = `${pick(meta.desc)} · ${t("track.len", Math.round(track.total))}`;
 
       const cv = document.createElement("canvas");
       cv.width = cv.height = 124;
@@ -292,10 +370,10 @@ export class UI {
 
       const info = document.createElement("div");
       const difficulty =
-        track.minR < 24 ? "★★★ 技术" : track.minR < 30 ? "★★ 均衡" : "★ 高速";
-      info.innerHTML = `<div class="nm">${t.name}</div>
-        <div class="ds">${t.desc}<br>${difficulty} · 周长 ${Math.round(track.total)}m</div>
-        <div class="bs">最佳 ${bests[id] ? fmtTime(bests[id]) : "--:--.--"}</div>`;
+        track.minR < 24 ? t("track.diff3") : track.minR < 30 ? t("track.diff2") : t("track.diff1");
+      info.innerHTML = `<div class="nm">${pick(meta.name)}</div>
+        <div class="ds">${pick(meta.desc)}<br>${difficulty} · ${t("track.len", Math.round(track.total))}</div>
+        <div class="bs">${t("track.best")} ${bests[id] ? fmtTime(bests[id]) : "--:--.--"}</div>`;
 
       card.append(cv, info);
       card.addEventListener("click", () => {
@@ -392,12 +470,12 @@ export class UI {
       const ic2 =
         ITEM_ICONS[ITEM_SEQ[((performance.now() / 90) | 0) % ITEM_SEQ.length]];
       if (ic) ic.textContent = ic2;
-      el.title = "抽取中…";
+      el.title = t("item.rolling");
     } else {
       el.classList.add("has");
       el.classList.remove("rolling");
       if (ic) ic.textContent = ITEM_ICONS[r.item] || "?";
-      el.title = `${ITEM_NAMES[r.item] || r.item} · 点击/按键使用`;
+      el.title = t("item.use", pick(ITEM_NAMES[r.item]) || r.item);
     }
   }
 
@@ -573,8 +651,8 @@ export class UI {
     const card = document.createElement("div");
     card.className = "achcard";
     card.innerHTML = `<div class="achicon">★</div>
-      <div class="achtxt"><div class="l">成 就 解 锁</div>
-      <div class="t">${meta.title}</div><div class="d">${meta.desc}</div></div>`;
+      <div class="achtxt"><div class="l">${t("ach.unlock")}</div>
+      <div class="t">${pick(meta.title)}</div><div class="d">${pick(meta.desc)}</div></div>`;
     this.el.achstack.appendChild(card);
     setTimeout(() => {
       card.classList.add("out");
@@ -588,16 +666,19 @@ export class UI {
     el.classList.remove("online", "warn", "err");
     if (status === "online") {
       el.classList.add(transport === "poll" ? "warn" : "online");
-      this.el.nettext.innerHTML =
-        `房间 <b>${room || "----"}</b> · ${players} 人 · ` +
-        (transport === "poll" ? "轮询模式" : "WebSocket");
+      this.el.nettext.innerHTML = t(
+        "netstat.line",
+        `<b>${room || "----"}</b>`,
+        players,
+        transport === "poll" ? t("netstat.poll") : t("netstat.ws")
+      );
     } else if (status === "connecting") {
-      this.el.nettext.textContent = "正在连接服务器…";
+      this.el.nettext.textContent = t("net.connecting");
     } else if (status === "error") {
       el.classList.add("err");
-      this.el.nettext.textContent = "连接失败";
+      this.el.nettext.textContent = t("net.failed");
     } else {
-      this.el.nettext.textContent = "未连接";
+      this.el.nettext.textContent = t("net.offline");
     }
   }
 
@@ -610,17 +691,17 @@ export class UI {
       .map((p) => {
         const paint = PAINTS[p.paint % PAINTS.length];
         const tags = [];
-        if (p.id === hostId) tags.push('<span class="tag host">房主</span>');
-        if (p.id === myId) tags.push('<span class="tag">你</span>');
+        if (p.id === hostId) tags.push(`<span class="tag host">${t("lobby.host")}</span>`);
+        if (p.id === myId) tags.push(`<span class="tag">${t("lobby.you")}</span>`);
         return `<div class="plrow">
         <span class="dot" style="background:#${paint.body.toString(16).padStart(6, "0")}"></span>
-        <span style="flex:1">${p.name || "车手"}</span>${tags.join("")}</div>`;
+        <span style="flex:1">${p.name || t("lobby.driver")}</span>${tags.join("")}</div>`;
       })
       .join("");
     const btn = $("btn-race-start");
     btn.disabled = !isHost;
-    btn.textContent = isHost ? "开 始 比 赛" : "等 待 房 主";
-    this.el.lobbyFoot.textContent = `赛道：${trackName} · ${laps} 圈 · 所有车手就位后由房主发车`;
+    btn.textContent = isHost ? t("lobby.startBtn") : t("lobby.waitHost");
+    this.el.lobbyFoot.textContent = t("lobby.foot", trackName, laps);
   }
 
   showLobbyConnect() {
@@ -632,7 +713,11 @@ export class UI {
   showResults({ title, sub, rows, unlocked, myIds }) {
     this.el.resultTitle.textContent = title;
     this.el.resultSub.textContent = sub || "";
-    const head = `<tr><th>#</th><th>车手</th><th>圈数</th><th>总用时</th><th>最佳单圈</th></tr>`;
+    const head = `<tr><th>${t("result.colRank")}</th><th>${t(
+      "result.colDriver"
+    )}</th><th>${t("result.colLaps")}</th><th>${t("result.colTotal")}</th><th>${t(
+      "result.colBest"
+    )}</th></tr>`;
     const body = rows
       .map((r) => {
         const paint = PAINTS[(r.paint || 0) % PAINTS.length];
@@ -642,7 +727,7 @@ export class UI {
         <td class="pos">${pos}</td>
         <td><span class="dot" style="background:#${paint.body.toString(16).padStart(6, "0")}"></span>${r.name}</td>
         <td>${r.laps}</td>
-        <td>${r.finished ? fmtTime(r.finishTime) : "未完赛"}</td>
+        <td>${r.finished ? fmtTime(r.finishTime) : t("result.dnf")}</td>
         <td>${r.bestLap ? fmtTime(r.bestLap) : "--:--.--"}</td>
       </tr>`;
       })
@@ -655,7 +740,7 @@ export class UI {
         .map(
           (a) => `
         <div class="achitem"><div class="ic">★</div>
-        <div><div class="t">${a.title}</div><div class="d">${a.desc}</div></div></div>`,
+        <div><div class="t">${pick(a.title)}</div><div class="d">${pick(a.desc)}</div></div></div>`,
         )
         .join("");
     } else {
@@ -671,12 +756,30 @@ export class UI {
       const tier = a.tier === "master" ? "★" : a.tier === "pro" ? "✦" : "·";
       return `<div class="achitem${un ? "" : " locked"}">
         <div class="ic">${un ? tier : "?"}</div>
-        <div><div class="t">${a.title}</div><div class="d">${a.desc}</div></div></div>`;
+        <div><div class="t">${pick(a.title)}</div><div class="d">${pick(a.desc)}</div></div></div>`;
     }).join("");
   }
 
   /* ==================================================== 事件接线 */
   _wire() {
+    /* 操作帮助浮层：入口按钮 + 关闭按钮（关闭即记「已读」避免每次弹） */
+    if (this.el.helpFab) {
+      this.el.helpFab.addEventListener("click", () => this.showHelp());
+    }
+    if (this.el.helpClose) {
+      this.el.helpClose.addEventListener("click", () => {
+        this.hideHelp();
+        try { localStorage.setItem("dr-tut-done", "1"); } catch (e) {}
+      });
+    }
+    /* H 键随时唤出/隐藏比赛中键位提示（菜单态与输入框内不触发） */
+    addEventListener("keydown", (e) => {
+      if (e.code !== "KeyH") return;
+      if (e.target && e.target.tagName === "INPUT") return;
+      if (this.el.menu && !this.el.menu.classList.contains("hide")) return;
+      this.toggleRaceHint();
+    });
+
     const segClick = (id, attr, key) => {
       $(id).addEventListener("click", (e) => {
         const b = e.target.closest("button");
@@ -706,7 +809,7 @@ export class UI {
           .forEach((x) =>
             x.classList.toggle("on", x.dataset.format === "classic"),
           );
-        this.toast("联机暂为竞速赛制", true, 1400);
+        this.toast(t("toast.onlineClassic"), true, 1400);
       }
       this.cb.onPrefs && this.cb.onPrefs(this.state);
     });
@@ -715,7 +818,7 @@ export class UI {
       const b = e.target.closest("button");
       if (!b || !b.dataset.format) return;
       if (this.state.mode === "online" && b.dataset.format === "item") {
-        this.toast("道具赛暂不支持联机，先用竞速吧", false);
+        this.toast(t("toast.itemNoOnline"), false);
         return;
       }
       this.state.format = b.dataset.format;
@@ -779,13 +882,13 @@ export class UI {
     if (fb) {
       fb.addEventListener("click", async () => {
         analytics.track("menu.feedback.click", {});
-        this.toast("正在发送反馈…", true, 3000);
+        this.toast(t("feedback.sending"), true, 3000);
         try {
           const ok = await analytics.sendNow();
-          if (ok) this.toast("反馈已发送，谢谢！", true, 1600);
-          else this.toast("发送失败，已保存到本地。", false, 2000);
+          if (ok) this.toast(t("feedback.sent"), true, 1600);
+          else this.toast(t("feedback.saveLocal"), false, 2000);
         } catch (e) {
-          this.toast("发送失败，稍后重试。", false, 2000);
+          this.toast(t("feedback.fail"), false, 2000);
         }
       });
     }
@@ -809,12 +912,12 @@ export class UI {
       }
     });
     $("btn-ach").addEventListener("click", () => {
-      this.el.pauseTitle.textContent = "成 就";
+      this.el.pauseTitle.textContent = t("pause.ach");
       this.el.achPanel.classList.remove("hide");
       this.showScreen("pause");
       $("btn-resume").classList.add("hide");
       $("btn-restart").classList.add("hide");
-      $("btn-quit").textContent = "返 回 菜 单";
+      $("btn-quit").textContent = t("pause.quit");
       analytics.track("menu.ach.open", {});
     });
     $("btn-lobby-back").addEventListener("click", () => {
@@ -828,7 +931,7 @@ export class UI {
     $("btn-join").addEventListener("click", () => {
       const code = ($("join-code").value || "").toUpperCase().trim();
       if (code.length !== 4) {
-        this.toast("房间码是 4 位", false);
+        this.toast(t("toast.room4"), false);
         return;
       }
       analytics.track("menu.join.attempt", { room: code });
@@ -872,16 +975,16 @@ export class UI {
 
   /** 进入比赛界面时恢复正常暂停菜单按钮 */
   restorePauseButtons() {
-    this.el.pauseTitle.textContent = "暂 停";
+    this.el.pauseTitle.textContent = t("pause.title");
     this.el.achPanel.classList.remove("hide");
     $("btn-resume").classList.remove("hide");
     $("btn-restart").classList.remove("hide");
-    $("btn-quit").textContent = "返 回 菜 单";
+    $("btn-quit").textContent = t("pause.quit");
   }
 
   showFatal(msg) {
     this.el.fatal.style.display = "block";
-    this.el.fatal.textContent = "⚠ 运行错误\n" + msg;
+    this.el.fatal.textContent = t("fatal", msg);
     document.title = "ERR · " + String(msg).slice(0, 120);
     window.__DR_ERROR__ = String(msg);
   }

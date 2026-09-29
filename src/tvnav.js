@@ -22,6 +22,8 @@
  * 留给 pad.js 做「继续」，本模块只用 B 返回 —— 避免一次按键被两处各解释一遍。
  * =========================================================================*/
 
+import { t } from './i18n.js';
+
 const REPEAT_DELAY = 380; // 按住多久开始连发（ms）
 const REPEAT_RATE = 120; // 连发间隔（ms）
 const STICK_DZ = 0.55; // 摇杆当作方向键用的死区（比驾驶死区大得多，否则误触）
@@ -203,7 +205,7 @@ export function createTVNav(opts = {}) {
       if (el && el.tagName && el.tagName.toLowerCase() === "input") {
         // Use prompt() as a simple on-screen keyboard fallback.
         const cur = el.value || "";
-        const v = prompt("输入车手名字：", cur);
+        const v = prompt(t('driver.namePh'), cur);
         if (v !== null) {
           el.value = String(v).slice(0, el.maxLength || 32);
           // Dispatch input event so existing listeners (HUD) react and persist.

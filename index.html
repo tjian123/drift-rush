@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -11,7 +11,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080b14'/%3E%3Cpath d='M6 21 L13 9 L18 16 L21 12 L26 21 Z' fill='%23ffd479'/%3E%3C/svg%3E"
     />
-    <title>DRIFT RUSH · 多人漂移竞速</title>
+    <title data-i18n="title.main">DRIFT RUSH · 多人漂移竞速</title>
     <link rel="stylesheet" href="/src/style.css" />
     <script type="importmap">
       { "imports": { "three": "/vendor/three.module.js" } }
@@ -60,7 +60,7 @@
     </div>
 
     <!-- 道具槽（仅道具赛显示，点按 = 使用） -->
-    <div class="hud panel" id="item-slot" title="使用道具">
+    <div class="hud panel" id="item-slot" data-i18n-title="hud.useItem" title="使用道具">
       <span class="ic" id="item-icon"></span>
       <small id="item-key">E</small>
     </div>
@@ -74,7 +74,7 @@
           ><br />
           <span id="sp1-rank">1 / 2</span>
         </div>
-        <div class="sp-item" id="sp1-item" title="使用道具（右Shift）">
+        <div class="sp-item" id="sp1-item" data-i18n-title="hud.useItemPad" title="使用道具（右Shift）">
           <span class="ic"></span>
         </div>
       </div>
@@ -86,7 +86,7 @@
           ><br />
           <span id="sp2-rank">2 / 2</span>
         </div>
-        <div class="sp-item" id="sp2-item" title="使用道具（右Shift）">
+        <div class="sp-item" id="sp2-item" data-i18n-title="hud.useItemPad" title="使用道具（右Shift）">
           <span class="ic"></span>
         </div>
       </div>
@@ -101,16 +101,16 @@
     <div id="achstack"></div>
 
     <div id="netstat" class="hidden">
-      <span class="led"></span><span id="nettext">未连接</span>
+      <span class="led"></span><span id="nettext" data-i18n="net.offline">未连接</span>
     </div>
 
     <div id="keys">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶</span>
-      <span><kbd>SPACE</kbd> 手刹漂移</span>
-      <span><kbd>C</kbd> 视角</span>
-      <span><kbd>R</kbd> 复位</span>
-      <span><kbd>P</kbd> 暂停</span>
-      <span><kbd>M</kbd> 静音</span>
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <i data-i18n="keys.drive">驾驶</i></span>
+      <span><kbd>SPACE</kbd> <i data-i18n="keys.hb">手刹漂移</i></span>
+      <span><kbd>C</kbd> <i data-i18n="keys.cam">视角</i></span>
+      <span><kbd>R</kbd> <i data-i18n="keys.reset">复位</i></span>
+      <span><kbd>P</kbd> <i data-i18n="keys.pause">暂停</i></span>
+      <span><kbd>M</kbd> <i data-i18n="keys.mute">静音</i></span>
     </div>
 
     <!-- ============================ 触屏操控 ============================
@@ -123,28 +123,28 @@
           <div class="ring-knob" id="steer-knob"></div>
           <div class="ring-cross"></div>
         </div>
-        <div class="steerhint" id="steer-hint">按住拖动 · 控制方向</div>
+        <div class="steerhint" id="steer-hint" data-i18n="touch.steerHint">按住拖动 · 控制方向</div>
       </div>
 
       <div class="pedalzone" id="pedal-zone">
         <div class="tbtn pedal hand" id="thand">
-          <b>漂移</b><small>手刹</small>
+          <b data-i18n="touch.drift">漂移</b><small data-i18n="touch.handbrake">手刹</small>
         </div>
         <div class="tbtn pedal brake" id="tbrake">
-          <b>刹车</b><small>后退</small>
+          <b data-i18n="touch.brake">刹车</b><small data-i18n="touch.reverse">后退</small>
         </div>
         <div class="tbtn pedal gas" id="tgas">
-          <b>油门</b><small>加速</small>
+          <b data-i18n="touch.gas">油门</b><small data-i18n="touch.accel">加速</small>
         </div>
       </div>
 
-      <button id="tpause" aria-label="暂停">❚❚</button>
+      <button id="tpause" data-i18n-aria="touch.pause" aria-label="暂停">❚❚</button>
     </div>
 
     <div id="rotate-hint">
       <div class="ph">📱</div>
-      <div class="t1">请横屏游玩</div>
-      <div class="t2">横屏视野更宽，方向盘和踏板也更好按</div>
+      <div class="t1" data-i18n="rotate.t1">请横屏游玩</div>
+      <div class="t2" data-i18n="rotate.t2">横屏视野更宽，方向盘和踏板也更好按</div>
     </div>
 
     <!-- ============================ 主菜单（分步引导） ============================
@@ -154,10 +154,10 @@
       <div class="menu-top">
         <div class="logo">DRIFT RUSH</div>
         <div class="menu-links">
-          <button class="btn ghost" id="btn-ach">成 就</button>
-          <button class="btn ghost" id="btn-board">排 行 榜</button>
-          <button class="btn ghost" id="btn-account">账 号</button>
-          <button class="btn ghost" id="btn-send-feedback">发 送 反 馈</button>
+          <button class="btn ghost" id="btn-ach" data-i18n="menu.achievements">成 就</button>
+          <button class="btn ghost" id="btn-board" data-i18n="menu.leaderboard">排 行 榜</button>
+          <button class="btn ghost" id="btn-account" data-i18n="menu.account">账 号</button>
+          <button class="btn ghost" id="btn-send-feedback" data-i18n="menu.feedback">发 送 反 馈</button>
           <!-- 电视模式：把 HUD/菜单按观看距离放大（判据是距离不是分辨率）。
            全屏：投到电视后干掉地址栏，也顺带拿到整块屏幕。
            两者都不改变玩法，所以放在这里常驻，而不是塞进操作面板深处。 -->
@@ -166,24 +166,27 @@
             id="btn-tv"
             type="button"
             aria-pressed="false"
+            data-i18n="menu.tvMode"
           >
             电 视 模 式
           </button>
-          <button class="btn ghost tvbtn" id="btn-fs" type="button">
+          <button class="btn ghost tvbtn" id="btn-fs" type="button" data-i18n="menu.fullscreen">
             全 屏
           </button>
+          <button class="btn ghost" id="btn-lang" type="button">EN</button>
         </div>
       </div>
 
       <!-- 第 1 步：赛道（首屏只切赛道，背景动态演示的就是它） -->
       <div class="steppane" id="step-track">
         <div class="section" id="sec-tracks">
-          <div class="label">选择赛道</div>
+          <div class="label" data-i18n="track.choose">选择赛道</div>
           <div class="trackwrap">
             <button
               class="tracknav prev"
               id="track-prev"
               type="button"
+              data-i18n-aria="track.prev"
               aria-label="上一批赛道"
             >
               ‹
@@ -193,6 +196,7 @@
               class="tracknav next"
               id="track-next"
               type="button"
+              data-i18n-aria="track.next"
               aria-label="下一批赛道"
             >
               ›
@@ -204,41 +208,43 @@
       <!-- 第 2 步：赛制 -->
       <div class="steppane hide" id="step-format">
         <div class="section" id="sec-format">
-          <div class="label">赛制</div>
+          <div class="label" data-i18n="format.label">赛制</div>
           <div class="seg" id="format-seg">
             <button data-format="classic">
-              竞速<small>纯比圈速与名次</small>
+              <span data-i18n="format.classic">竞速</span><small data-i18n="format.classicDesc">纯比圈速与名次</small>
             </button>
             <button data-format="item">
-              道具<small>道具箱 · 氮气/护盾/油污/导弹</small>
+              <span data-i18n="format.item">道具</span><small data-i18n="format.itemDesc">道具箱 · 氮气/护盾/油污/导弹</small>
             </button>
           </div>
+          <!-- 注意：按钮本身不带 data-i18n，否则 textContent 会清空内部 span/small -->
         </div>
         <div class="section" id="sec-mode">
-          <div class="label">模式</div>
+          <div class="label" data-i18n="mode.label">模式</div>
           <div class="seg" id="mode-seg">
             <button data-mode="solo">
-              单人计时<small>和 AI 车手比赛</small>
+              <span data-i18n="mode.solo">单人计时</span><small data-i18n="mode.soloDesc">和 AI 车手比赛</small>
             </button>
             <button data-mode="split">
-              本地分屏<small>同屏双人 + AI</small>
+              <span data-i18n="mode.split">本地分屏</span><small data-i18n="mode.splitDesc">同屏双人 + AI</small>
             </button>
             <button data-mode="online">
-              在线联机<small>建房 / 输码加入</small>
+              <span data-i18n="mode.online">在线联机</span><small data-i18n="mode.onlineDesc">建房 / 输码加入</small>
             </button>
           </div>
+          <!-- 注意：按钮本身不带 data-i18n，否则 textContent 会清空内部 span/small -->
         </div>
         <div class="section" id="sec-rules">
-          <div class="label">难度 / 圈数</div>
+          <div class="label" data-i18n="rules.label">难度 / 圈数</div>
           <div class="seg" id="level-seg">
-            <button data-level="easy">轻松</button>
-            <button data-level="normal">普通</button>
-            <button data-level="hard">困难</button>
+            <button data-level="easy" data-i18n="level.easy">轻松</button>
+            <button data-level="normal" data-i18n="level.normal">普通</button>
+            <button data-level="hard" data-i18n="level.hard">困难</button>
           </div>
           <div class="seg" id="laps-seg">
-            <button data-laps="1">1 圈</button>
-            <button data-laps="3">3 圈</button>
-            <button data-laps="5">5 圈</button>
+            <button data-laps="1" data-i18n="laps.1">1 圈</button>
+            <button data-laps="3" data-i18n="laps.3">3 圈</button>
+            <button data-laps="5" data-i18n="laps.5">5 圈</button>
           </div>
         </div>
       </div>
@@ -246,9 +252,9 @@
       <!-- 第 3 步：车手与操作 -->
       <div class="steppane hide" id="step-driver">
         <div class="section" id="sec-driver">
-          <div class="label">车手 / 涂装</div>
+          <div class="label" data-i18n="driver.label">车手 / 涂装</div>
           <div class="field">
-            <input id="name-input" maxlength="10" placeholder="输入车手名字" />
+            <input id="name-input" maxlength="10" data-i18n-ph="driver.namePh" placeholder="输入车手名字" />
           </div>
           <div class="paints" id="paint-list"></div>
         </div>
@@ -260,14 +266,15 @@
             id="ctrl-toggle"
             type="button"
             aria-expanded="true"
+            data-i18n="ctrl.label"
           >
             操作 <span class="labnote" id="ctrl-note"></span
             ><span class="chev">▾</span>
           </button>
           <div class="ctrlgrid" id="ctrl-grid">
             <div class="ctrlrow hide" id="row-autogas">
-              <span class="ck">自动油门</span>
-              <span class="cd2"
+              <span class="ck" data-i18n="ctrl.autogas">自动油门</span>
+              <span class="cd2" data-i18n="ctrl.autogasDesc"
                 >不按油门也会自动加速，只需专心转向（踩刹车时自动让位）</span
               >
               <button
@@ -280,25 +287,25 @@
               </button>
             </div>
             <div class="ctrlrow hide" id="row-hand">
-              <span class="ck">手别</span>
-              <span class="cd2">左撇子可把方向盘换到右侧</span>
+              <span class="ck" data-i18n="ctrl.hand">手别</span>
+              <span class="cd2" data-i18n="ctrl.handDesc">左撇子可把方向盘换到右侧</span>
               <div class="seg mini" id="seg-hand">
-                <button data-hand="right">右手</button>
-                <button data-hand="left">左手</button>
+                <button data-hand="right" data-i18n="ctrl.right">右手</button>
+                <button data-hand="left" data-i18n="ctrl.left">左手</button>
               </div>
             </div>
             <div class="ctrlrow hide" id="row-sens">
-              <span class="ck">转向灵敏度</span>
-              <span class="cd2">越高，同样的拖动距离给出的转向越大</span>
+              <span class="ck" data-i18n="ctrl.sens">转向灵敏度</span>
+              <span class="cd2" data-i18n="ctrl.sensDesc">越高，同样的拖动距离给出的转向越大</span>
               <div class="seg mini" id="seg-sens">
-                <button data-sens="0.7">稳</button>
-                <button data-sens="1">标准</button>
-                <button data-sens="1.5">灵敏</button>
+                <button data-sens="0.7" data-i18n="ctrl.stable">稳</button>
+                <button data-sens="1" data-i18n="ctrl.standard">标准</button>
+                <button data-sens="1.5" data-i18n="ctrl.sensitive">灵敏</button>
               </div>
             </div>
             <div class="ctrlrow hide" id="row-tilt">
-              <span class="ck">陀螺仪转向</span>
-              <span class="cd2"
+              <span class="ck" data-i18n="ctrl.tilt">陀螺仪转向</span>
+              <span class="cd2" data-i18n="ctrl.tiltDesc"
                 >左右倾斜手机转向，需要设备支持（iOS 需授权）</span
               >
               <button
@@ -311,21 +318,12 @@
               </button>
             </div>
             <div class="ctrlrow" id="row-keys">
-              <span class="ck">键盘 / 鼠标</span>
-              <span class="cd2"
-                ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 驾驶 ·
-                <kbd>SPACE</kbd> 手刹 · <kbd>C</kbd> 视角 · <kbd>R</kbd> 复位 ·
-                <kbd>P</kbd> 暂停 · <kbd>M</kbd> 静音</span
-              >
+              <span class="ck" data-i18n="ctrl.keyMouse">键盘 / 鼠标</span>
+              <span class="cd2"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <i data-i18n="keys.drive">驾驶</i> · <kbd>SPACE</kbd> <i data-i18n="keys.hb">手刹</i> · <kbd>C</kbd> <i data-i18n="keys.cam">视角</i> · <kbd>R</kbd> <i data-i18n="keys.reset">复位</i> · <kbd>P</kbd> <i data-i18n="keys.pause">暂停</i> · <kbd>M</kbd> <i data-i18n="keys.mute">静音</i></span>
             </div>
             <div class="ctrlrow" id="row-pad">
-              <span class="ck">游戏手柄</span>
-              <span class="cd2"
-                >连上后任意按键即激活 · <kbd>左摇杆</kbd> 转向 ·
-                <kbd>RT</kbd> 油门 · <kbd>LT</kbd> 刹车 · <kbd>A</kbd> 手刹 ·
-                <kbd>X</kbd> 道具 · <kbd>Y</kbd> 视角 ·
-                <kbd>START</kbd> 暂停</span
-              >
+              <span class="ck" data-i18n="ctrl.pad">游戏手柄</span>
+              <span class="cd2"><i data-i18n="ctrl.padDesc1">连上后任意按键即激活</i> · <kbd>左摇杆</kbd> <i data-i18n="ctrl.steer">转向</i> · <kbd>RT</kbd> <i data-i18n="ctrl.gas">油门</i> · <kbd>LT</kbd> <i data-i18n="ctrl.brake">刹车</i> · <kbd>A</kbd> <i data-i18n="touch.handbrake">手刹</i> · <kbd>X</kbd> <i data-i18n="ctrl.item">道具</i> · <kbd>Y</kbd> <i data-i18n="keys.cam">视角</i> · <kbd>START</kbd> <i data-i18n="keys.pause">暂停</i></span>
             </div>
           </div>
         </div>
@@ -335,9 +333,9 @@
       <div class="menu-nav">
         <div class="steps" id="menu-steps"></div>
         <div class="center navbtns">
-          <button class="btn ghost hide" id="btn-prev">上 一 步</button>
-          <button class="btn" id="btn-next">下 一 步</button>
-          <button class="btn hide" id="btn-go">开 始 比 赛</button>
+          <button class="btn ghost hide" id="btn-prev" data-i18n="nav.prev">上 一 步</button>
+          <button class="btn" id="btn-next" data-i18n="nav.next">下 一 步</button>
+          <button class="btn hide" id="btn-go" data-i18n="nav.start">开 始 比 赛</button>
         </div>
         <div class="cloudline" id="cloudline"></div>
       </div>
@@ -345,24 +343,63 @@
       <div class="foot" id="menu-foot"></div>
     </div>
 
+    <!-- ===================== 操作帮助浮层（首次启动/随时唤出） ===================== -->
+    <button class="help-fab" id="btn-help" type="button" data-i18n-aria="menu.help" aria-label="操作帮助">?</button>
+    <div class="screen hide" id="screen-help">
+      <div class="help-card">
+        <div class="help-title" data-i18n="help.title">How to Play</div>
+        <div class="help-sub" data-i18n="help.sub">Drift through every corner. Hold the handbrake to slide.</div>
+        <div class="help-grid">
+          <div class="help-col">
+            <div class="help-h" data-i18n="help.kbP1">Keyboard · Player 1</div>
+            <div class="help-keys">
+              <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <i data-i18n="help.drive">drive</i>
+              <span class="dim" data-i18n="help.orP1">（or ↑←↓→）</span>
+            </div>
+            <div class="help-keys"><kbd>Space</kbd> <i data-i18n="help.hb">handbrake / drift</i></div>
+            <div class="help-keys"><kbd>C</kbd> <i data-i18n="help.cam">camera</i> · <kbd>P</kbd> <i data-i18n="help.pause">pause</i> · <kbd>M</kbd> <i data-i18n="help.mute">mute</i> · <kbd>R</kbd> <i data-i18n="help.reset">reset</i></div>
+          </div>
+          <div class="help-col">
+            <div class="help-h" data-i18n="help.kbP2">Keyboard · Player 2 <span class="dim">(split)</span></div>
+            <div class="help-keys"><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> <i data-i18n="help.drive">drive</i></div>
+            <div class="help-keys"><kbd>R-Shift</kbd> <i data-i18n="help.hb">handbrake / drift</i></div>
+            <div class="help-h" style="margin-top:10px" data-i18n="help.pad">Gamepad</div>
+            <div class="help-keys"><i data-i18n="help.padDesc1">L-stick steer</i> · <kbd>RT</kbd> <i data-i18n="ctrl.gas">gas</i> · <kbd>LT</kbd> <i data-i18n="ctrl.brake">brake</i></div>
+            <div class="help-keys"><kbd>A</kbd> <i data-i18n="touch.handbrake">handbrake</i> · <kbd>Y</kbd> <i data-i18n="keys.cam">camera</i> · <kbd>Start</kbd> <i data-i18n="keys.pause">pause</i></div>
+          </div>
+          <div class="help-col help-touch">
+            <div class="help-h" data-i18n="help.touch">Touch <span class="dim">(phone/tablet)</span></div>
+            <div class="help-keys" data-i18n="help.touchSteer">Left side of screen = steering wheel</div>
+            <div class="help-keys" data-i18n="help.touchPedal">Right side = gas / brake / handbrake</div>
+            <div class="help-keys dim" data-i18n="help.touchAuto">Auto-gas on by default — just steer</div>
+          </div>
+        </div>
+        <button class="btn" id="btn-help-close" type="button" data-i18n="help.gotit">Got it — let's drift!</button>
+      </div>
+    </div>
+
+    <!-- 比赛中键盘操作提示（非触屏自动显示，按 H 再唤出） -->
+    <div class="race-hint hide" id="race-hint"></div>
+
     <!-- ============================ 联机大厅 ============================ -->
     <div class="screen hide" id="screen-lobby">
-      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)">
+      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)" data-i18n="lobby.title">
         在 线 联 机
       </div>
 
       <div class="section" id="lobby-connect">
-        <div class="label">创建房间</div>
+        <div class="label" data-i18n="lobby.create">创建房间</div>
         <div class="center" style="margin-top: 8px">
-          <button class="btn" id="btn-create">创 建 房 间</button>
+          <button class="btn" id="btn-create" data-i18n="lobby.createBtn">创 建 房 间</button>
         </div>
         <div style="height: 22px"></div>
-        <div class="label">加入房间</div>
+        <div class="label" data-i18n="lobby.join">加入房间</div>
         <div class="row2" style="margin-top: 8px">
           <input
             class="field"
             id="join-code"
             maxlength="4"
+            data-i18n-ph="lobby.codePh"
             placeholder="输入 4 位房间码"
             style="
               padding: 13px;
@@ -378,27 +415,27 @@
               outline: none;
             "
           />
-          <button class="btn ghost" id="btn-join">加 入</button>
+          <button class="btn ghost" id="btn-join" data-i18n="lobby.joinBtn">加 入</button>
         </div>
       </div>
 
       <div class="section hide" id="lobby-room">
-        <div class="label">房间码</div>
+        <div class="label" data-i18n="lobby.roomCode">房间码</div>
         <div class="roomcode" id="room-code">----</div>
-        <div class="hint" id="room-hint">把房间码发给朋友 · 最多 8 人</div>
+        <div class="hint" id="room-hint" data-i18n="lobby.hint">把房间码发给朋友 · 最多 8 人</div>
         <div class="label" style="margin-top: 20px">
-          车手 <span id="lobby-count" style="color: var(--amber)"></span>
+          <span data-i18n="lobby.drivers">车手</span> <span id="lobby-count" style="color: var(--amber)"></span>
         </div>
         <div class="playerlist" id="player-list"></div>
         <div class="center">
-          <button class="btn" id="btn-race-start" disabled>开 始 比 赛</button>
-          <button class="btn ghost" id="btn-leave">离 开 房 间</button>
+          <button class="btn" id="btn-race-start" disabled data-i18n="lobby.startBtn">开 始 比 赛</button>
+          <button class="btn ghost" id="btn-leave" data-i18n="lobby.leave">离 开 房 间</button>
         </div>
         <div class="foot" id="lobby-foot"></div>
       </div>
 
       <div class="center">
-        <button class="btn ghost" id="btn-lobby-back">返 回</button>
+        <button class="btn ghost" id="btn-lobby-back" data-i18n="lobby.back">返 回</button>
       </div>
     </div>
 
@@ -408,24 +445,25 @@
         class="logo"
         style="font-size: clamp(28px, 6vw, 54px)"
         id="result-title"
+        data-i18n="result.title"
       >
         比 赛 结 束
       </div>
       <div class="tagline" id="result-sub"></div>
 
       <div class="section">
-        <div class="label">名次</div>
+        <div class="label" data-i18n="result.rank">名次</div>
         <table class="result-table" id="result-table"></table>
       </div>
 
       <div class="section" id="result-ach-section">
-        <div class="label">本场解锁的成就</div>
+        <div class="label" data-i18n="result.ach">本场解锁的成就</div>
         <div class="achgrid" id="result-ach"></div>
       </div>
 
       <div class="center">
-        <button class="btn" id="btn-again">再 来 一 局</button>
-        <button class="btn ghost" id="btn-back-menu">返 回 菜 单</button>
+        <button class="btn" id="btn-again" data-i18n="result.again">再 来 一 局</button>
+        <button class="btn ghost" id="btn-back-menu" data-i18n="result.back">返 回 菜 单</button>
       </div>
     </div>
 
@@ -435,26 +473,27 @@
         class="logo"
         style="font-size: clamp(26px, 5vw, 44px)"
         id="pause-title"
+        data-i18n="pause.title"
       >
         暂 停
       </div>
       <div class="section" id="ach-panel">
         <div class="label">
-          成就 <span id="ach-count" style="color: var(--amber)"></span>
+          <span data-i18n="pause.ach">成就</span> <span id="ach-count" style="color: var(--amber)"></span>
         </div>
         <div class="achgrid" id="ach-grid"></div>
       </div>
       <div class="center">
-        <button class="btn" id="btn-resume">继 续 比 赛</button>
-        <button class="btn ghost" id="btn-restart">重 新 开 始</button>
-        <button class="btn ghost" id="btn-quit">返 回 菜 单</button>
+        <button class="btn" id="btn-resume" data-i18n="pause.resume">继 续 比 赛</button>
+        <button class="btn ghost" id="btn-restart" data-i18n="pause.restart">重 新 开 始</button>
+        <button class="btn ghost" id="btn-quit" data-i18n="pause.quit">返 回 菜 单</button>
       </div>
     </div>
 
     <!-- ============================ 账号（云服务） ============================ -->
     <div class="screen hide" id="screen-account">
-      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)">账 号</div>
-      <div class="tagline" id="acc-tagline">
+      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)" data-i18n="acc.title">账 号</div>
+      <div class="tagline" id="acc-tagline" data-i18n="acc.tagline">
         登录后成绩才会登上排行榜 · 不需要注册第二步
       </div>
       <div class="cloudbar" id="cloud-status"></div>
@@ -469,10 +508,10 @@
           <div class="accpane" id="pane-code">
             <div class="steps" id="code-steps">
               <div class="stp on" data-step="1">
-                <i>1</i><span>填写邮箱</span>
+                <i>1</i><span data-i18n="acc.emailStep">填写邮箱</span>
               </div>
               <div class="stp" data-step="2">
-                <i>2</i><span>输入验证码</span>
+                <i>2</i><span data-i18n="acc.codeStep">输入验证码</span>
               </div>
             </div>
 
@@ -483,21 +522,22 @@
                 type="email"
                 autocomplete="email"
                 inputmode="email"
+                data-i18n-ph="acc.emailPh"
                 placeholder="邮箱地址"
               />
               <div class="accacts">
-                <button class="btn" id="btn-send-code">继 续</button>
+                <button class="btn" id="btn-send-code" data-i18n="acc.continue">继 续</button>
               </div>
               <div class="acclinks">
-                <button class="lnk" id="lnk-pwd">已有账号 · 用密码登录</button>
+                <button class="lnk" id="lnk-pwd" data-i18n="acc.usePwd">已有账号 · 用密码登录</button>
               </div>
             </div>
 
             <div id="step-code" class="hide">
               <div class="otpwho">
-                <span class="wk">验证码已发至</span>
+                <span class="wk" data-i18n="acc.codeSent">验证码已发至</span>
                 <b id="otp-to">—</b>
-                <button class="lnk" id="lnk-change-email">换一个</button>
+                <button class="lnk" id="lnk-change-email" data-i18n="acc.changeEmail">换一个</button>
               </div>
               <input
                 class="accinput code"
@@ -505,6 +545,7 @@
                 inputmode="numeric"
                 maxlength="6"
                 autocomplete="one-time-code"
+                data-i18n-ph="acc.codePh"
                 placeholder="6 位验证码"
               />
               <input
@@ -512,15 +553,16 @@
                 id="otp-pwd"
                 type="password"
                 autocomplete="new-password"
+                data-i18n-ph="acc.newPwdPh"
                 placeholder="设置登录密码"
               />
               <div class="otpmode" id="otp-mode"></div>
               <div class="accacts">
-                <button class="btn" id="btn-otp-login">登 录</button>
+                <button class="btn" id="btn-otp-login" data-i18n="acc.login">登 录</button>
               </div>
               <div class="acclinks">
-                <button class="lnk" id="lnk-resend">没收到？重新发送</button>
-                <button class="lnk" id="lnk-back-email">返回上一步</button>
+                <button class="lnk" id="lnk-resend" data-i18n="acc.resend">没收到？重新发送</button>
+                <button class="lnk" id="lnk-back-email" data-i18n="acc.backStep">返回上一步</button>
               </div>
             </div>
 
@@ -529,12 +571,13 @@
 
           <!-- ============ 次级入口：密码登录 ============ -->
           <div class="accpane hide" id="pane-pwd">
-            <div class="panehead" id="pwd-head">用密码登录</div>
+            <div class="panehead" id="pwd-head" data-i18n="acc.pwdHead">用密码登录</div>
             <input
               class="accinput"
               id="acc-email"
               type="email"
               autocomplete="username"
+              data-i18n-ph="acc.emailPh2"
               placeholder="邮箱"
             />
             <input
@@ -542,32 +585,32 @@
               id="acc-pwd"
               type="password"
               autocomplete="current-password"
+              data-i18n-ph="acc.pwdPh"
               placeholder="密码"
             />
             <div class="accacts">
-              <button class="btn" id="btn-pwd-login">登 录</button>
+              <button class="btn" id="btn-pwd-login" data-i18n="acc.login">登 录</button>
             </div>
             <div class="acclinks">
-              <button class="lnk" id="lnk-forgot">忘记密码</button>
-              <button class="lnk" id="lnk-back-code">
-                没有密码？用邮箱验证码
-              </button>
+              <button class="lnk" id="lnk-forgot" data-i18n="acc.forgot">忘记密码</button>
+              <button class="lnk" id="lnk-back-code" data-i18n="acc.noPwd">没有密码？用邮箱验证码</button>
             </div>
             <div class="acchint" id="acc-hint-pwd"></div>
           </div>
 
           <!-- ============ 次级入口：重置密码 ============ -->
           <div class="accpane hide" id="pane-reset">
-            <div class="panehead">重置密码</div>
+            <div class="panehead" data-i18n="acc.resetHead">重置密码</div>
             <input
               class="accinput"
               id="reset-email"
               type="email"
               autocomplete="email"
+              data-i18n-ph="acc.regEmailPh"
               placeholder="注册邮箱"
             />
             <div class="accacts">
-              <button class="btn ghost" id="btn-send-reset">
+              <button class="btn ghost" id="btn-send-reset" data-i18n="acc.sendReset">
                 发 送 重 置 码
               </button>
             </div>
@@ -576,6 +619,7 @@
               id="reset-code"
               inputmode="numeric"
               maxlength="6"
+              data-i18n-ph="acc.resetCodePh"
               placeholder="6 位重置码"
             />
             <input
@@ -583,13 +627,14 @@
               id="reset-newpwd"
               type="password"
               autocomplete="new-password"
+              data-i18n-ph="acc.newPwdPh2"
               placeholder="新密码（至少 6 位）"
             />
             <div class="accacts">
-              <button class="btn" id="btn-do-reset">设 置 新 密 码</button>
+              <button class="btn" id="btn-do-reset" data-i18n="acc.setPwd">设 置 新 密 码</button>
             </div>
             <div class="acclinks">
-              <button class="lnk" id="lnk-back-code2">返回登录</button>
+              <button class="lnk" id="lnk-back-code2" data-i18n="acc.backLogin">返回登录</button>
             </div>
             <div class="acchint" id="acc-hint-reset"></div>
           </div>
@@ -599,35 +644,35 @@
       <!-- 已登录 -->
       <div id="acc-user" class="hide">
         <div class="section">
-          <div class="label">当前账号</div>
+          <div class="label" data-i18n="acc.current">当前账号</div>
           <div class="accwho" id="acc-who-email"></div>
-          <div class="label" style="margin-top: 16px">云端战绩</div>
+          <div class="label" style="margin-top: 16px" data-i18n="acc.stats">云端战绩</div>
           <div class="acctable" id="acc-stats"></div>
           <div class="center">
-            <button class="btn ghost" id="btn-sync">
+            <button class="btn ghost" id="btn-sync" data-i18n="acc.sync">
               同 步 成 就 与 档 案
             </button>
-            <button class="btn ghost" id="btn-signout">退 出 登 录</button>
+            <button class="btn ghost" id="btn-signout" data-i18n="acc.signout">退 出 登 录</button>
           </div>
         </div>
       </div>
 
       <div class="center">
-        <button class="btn ghost" id="btn-acc-back">返 回 菜 单</button>
+        <button class="btn ghost" id="btn-acc-back" data-i18n="acc.back">返 回 菜 单</button>
       </div>
     </div>
 
     <!-- ============================ 排行榜 ============================ -->
     <div class="screen hide" id="screen-board">
-      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)">排 行 榜</div>
+      <div class="logo" style="font-size: clamp(26px, 5vw, 44px)" data-i18n="board.title">排 行 榜</div>
       <div class="section">
-        <div class="label">赛道</div>
+        <div class="label" data-i18n="board.track">赛道</div>
         <div class="seg" id="board-tracks"></div>
         <table class="result-table" id="board-table"></table>
         <div class="acchint" id="board-hint"></div>
       </div>
       <div class="center">
-        <button class="btn ghost" id="btn-board-back">返 回 菜 单</button>
+        <button class="btn ghost" id="btn-board-back" data-i18n="board.back">返 回 菜 单</button>
       </div>
     </div>
 

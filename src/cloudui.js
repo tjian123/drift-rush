@@ -19,6 +19,7 @@
 
 import { TRACKS, TRACK_ORDER } from './config.js';
 import { fmtTime } from './util.js';
+import { t, pick } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -95,11 +96,11 @@ export class CloudUI {
   render() {
     const c = this.cloud;
     const statusText = {
-      idle: '云服务未启动',
-      loading: '正在连接云服务…',
-      ready: '云服务已连接',
-      error: '云服务不可用（' + ((c.error && c.error.message) || '未知原因') + '）',
-      unavailable: '云服务不可用',
+      idle: t('cloud.statusIdle'),
+      loading: t('cloud.statusLoading'),
+      ready: t('cloud.statusReady'),
+      error: t('cloud.statusError', (c.error && c.error.message) || t('cloud.errUnknown')),
+      unavailable: t('cloud.statusUnavailable'),
     }[c.status] || c.status;
     const dot = c.status === 'ready' ? 'ok' : c.status === 'loading' ? 'wait' : 'bad';
     $('cloud-status').innerHTML = `<span class="cd ${dot}"></span>${statusText}`;
@@ -109,20 +110,18 @@ export class CloudUI {
     $('acc-user').classList.toggle('hide', guest);
     const tag = $('acc-tagline');
     if (tag) {
-      tag.textContent = guest
-        ? '填邮箱 · 收验证码 · 一步完成登录或注册'
-        : '已登录 · 跑出的成绩会自动记入排行榜';
+      tag.textContent = guest ? t('acc.tagGuest') : t('acc.tagUser');
     }
     if (guest) return;
 
-    $('acc-who-email').textContent = (c.user && c.user.email) || '已登录';
+    $('acc-who-email').textContent = (c.user && c.user.email) || t('acc.whoFallback');
     const p = c.profile || {};
     const rows = [
-      ['比赛场次', p.races != null ? p.races : '--'],
-      ['夺冠次数', p.wins != null ? p.wins : '--'],
-      ['累计里程', p.total_km != null ? p.total_km.toFixed(1) + ' km' : '--'],
-      ['云端最佳圈速', p.best_lap_ms ? fmtTime(p.best_lap_ms) : '--:--.--'],
-      ['云档案昵称', p.display_name || '--'],
+      [t('acc.statRaces'), p.races != null ? p.races : '--'],
+      [t('acc.statWins'), p.wins != null ? p.wins : '--'],
+      [t('acc.statKm'), p.total_km != null ? p.total_km.toFixed(1) + ' km' : '--'],
+      [t('acc.statBest'), p.best_lap_ms ? fmtTime(p.best_lap_ms) : '--:--.--'],
+      [t('acc.statName'), p.display_name || '--'],
     ];
     $('acc-stats').innerHTML = rows
       .map(([k, v]) => `<div class="accrow"><span class="k">${k}</span><span class="v">${v}</span></div>`)
@@ -152,7 +151,7 @@ export class CloudUI {
     $('otp-code').addEventListener('input', () => {
       // 粘贴整串验证码时自动提交，省一次点击
       const v = ($('otp-code').value || '').trim();
-      if (v.length === 6 && /^\d{6}$/.test(v)) this.hint('已填入 6 位验证码，点下方按钮完成', 'info');
+      if (v.length === 6 && /^\d{6}$/.test(v)) this.hint(t('acc.otpFilled'), 'info');
     });
     $('lnk-resend').addEventListener('click', () => this.doSendCode({ resend: true }));
     $('lnk-change-email').addEventListener('click', () => this.backToEmail());
@@ -195,7 +194,7 @@ export class CloudUI {
   _resetSendBtn() {
     clearInterval(this.sendTimer);
     const btn = $('btn-send-code');
-    btn.textContent = '继 续';
+    btn.textContent = t('acc.continue');
     btn.disabled = false;
   }
 
@@ -206,15 +205,15 @@ export class CloudUI {
    */
   async doSendCode({ resend = false } = {}) {
     const email = ($('otp-email').value || '').trim();
-    if (!EMAIL_RE.test(email)) { this.hint('请填写正确的邮箱地址，例如 you@example.com', 'bad'); return; }
-    if (this.cloud.status !== 'ready') { this.hint('云服务当前不可用，无法发送验证码', 'bad'); return; }
+    if (!EMAIL_RE.test(email)) { this.hint(t('acc.badEmail'), 'bad'); return; }
+    if (this.cloud.status !== 'ready') { this.hint(t('acc.cloudDown'), 'bad'); return; }
 
     const btn = resend ? $('lnk-resend') : $('btn-send-code');
     const raw = btn.textContent;
     btn.disabled = true;
-    if (resend) btn.textContent = '发送中…';
+    if (resend) btn.textContent = t('acc.sending');
     this.setView('code', resend ? 'code' : 'email');   // resend 时留在第 2 步
-    this.hint('正在发送验证码…');
+    this.hint(t('acc.sendingCode'));
 
     try {
       const data = await this.cloud.sendEmailCode(email);
@@ -229,13 +228,11 @@ export class CloudUI {
       if (!resend) this._startCountdown();
       else btn.textContent = raw;
       this.hint(
-        this.pending.isExistingUser
-          ? '验证码已发送，输入后即完成登录'
-          : '验证码已发送，输入后即可创建账号',
+        this.pending.isExistingUser ? t('acc.sentLogin') : t('acc.sentRegister'),
         'ok');
     } catch (e) {
       this.pending = null;
-      this.hint(e.message || '验证码发送失败', 'bad');
+      this.hint(e.message || t('acc.sendCodeFail'), 'bad');
       btn.disabled = false;
       if (resend) btn.textContent = raw;
     }
@@ -254,15 +251,15 @@ export class CloudUI {
     const pwd = $('otp-pwd');
     const mode = $('otp-mode');
     if (p.isExistingUser) {
-      btn.textContent = '登 录';
+      btn.textContent = t('acc.login');
       pwd.classList.add('hide');
-      pwd.placeholder = '设置登录密码';
-      mode.innerHTML = '这个邮箱已经有账号，验证通过后直接<b>登录</b>。';
+      pwd.placeholder = t('acc.newPwdPh');
+      mode.innerHTML = t('acc.modeExisting');
     } else {
-      btn.textContent = '注 册 并 登 录';
+      btn.textContent = t('acc.registerBtn');
       pwd.classList.remove('hide');
-      pwd.placeholder = '设置登录密码（至少 6 位）';
-      mode.innerHTML = '这个邮箱还没有账号，验证通过后将<b>自动创建账号</b>并登录，同时设定一个登录密码。';
+      pwd.placeholder = t('acc.pwdPhNew');
+      mode.innerHTML = t('acc.modeNew');
     }
   }
 
@@ -272,31 +269,31 @@ export class CloudUI {
     const email = ($('otp-email').value || '').trim();
     const token = ($('otp-code').value || '').trim();
     const password = $('otp-pwd').value || '';
-    if (!this.pending) { this.hint('请先获取验证码', 'bad'); return; }
+    if (!this.pending) { this.hint(t('acc.needCode'), 'bad'); return; }
     if (this.pending.email !== email) {
-      this.hint('邮箱已改动，请为当前邮箱重新获取验证码', 'bad');
+      this.hint(t('acc.emailChanged'), 'bad');
       this.backToEmail();
       return;
     }
-    if (!/^\d{4,8}$/.test(token)) { this.hint('请输入邮件里的验证码', 'bad'); return; }
+    if (!/^\d{4,8}$/.test(token)) { this.hint(t('acc.needToken'), 'bad'); return; }
     if (!this.pending.isExistingUser && password.length < 6) {
-      this.hint('新账号需要设置至少 6 位的密码', 'bad');
+      this.hint(t('acc.needPwd6'), 'bad');
       return;
     }
 
     const btn = $('btn-otp-login');
     const raw = btn.textContent;
     btn.disabled = true;
-    btn.textContent = this.pending.isExistingUser ? '登 录 中…' : '注 册 中…';
+    btn.textContent = this.pending.isExistingUser ? t('acc.loggingIn') : t('acc.registering');
     this.hint('');
     try {
       await this.cloud.verifyEmailCode({ email, token, pending: this.pending, password });
       const wasNew = !this.pending.isExistingUser;
       this.pending = null;
       $('otp-code').value = ''; $('otp-pwd').value = '';
-      await this.afterSignIn(wasNew ? '账号已创建并登录' : '登录成功');
+      await this.afterSignIn(wasNew ? t('acc.created') : t('acc.loginOk'));
     } catch (e) {
-      this.hint(e.message || '验证失败', 'bad');
+      this.hint(e.message || t('acc.verifyFail'), 'bad');
     } finally {
       btn.disabled = false;
       btn.textContent = raw;
@@ -307,35 +304,35 @@ export class CloudUI {
   async doPasswordLogin() {
     const email = ($('acc-email').value || '').trim();
     const password = $('acc-pwd').value || '';
-    if (!EMAIL_RE.test(email)) { this.hint('请填写正确的邮箱地址', 'bad'); return; }
-    if (!password) { this.hint('请输入密码', 'bad'); return; }
+    if (!EMAIL_RE.test(email)) { this.hint(t('acc.badEmailShort'), 'bad'); return; }
+    if (!password) { this.hint(t('acc.needPwd'), 'bad'); return; }
     const btn = $('btn-pwd-login');
-    btn.disabled = true; btn.textContent = '登 录 中…';
+    btn.disabled = true; btn.textContent = t('acc.loggingIn');
     this.hint('');
     try {
       await this.cloud.signInWithPassword(email, password);
       $('acc-pwd').value = '';
-      await this.afterSignIn('登录成功');
+      await this.afterSignIn(t('acc.loginOk'));
     } catch (e) {
-      this.hint(e.message || '登录失败', 'bad');
+      this.hint(e.message || t('acc.loginFail'), 'bad');
     } finally {
-      btn.disabled = false; btn.textContent = '登 录';
+      btn.disabled = false; btn.textContent = t('acc.login');
     }
   }
 
   /* ---------------------------------------------------------- 重置密码 */
   async doGetResetCode() {
     const email = ($('reset-email').value || '').trim();
-    if (!EMAIL_RE.test(email)) { this.hint('请填写正确的邮箱地址', 'bad'); return; }
+    if (!EMAIL_RE.test(email)) { this.hint(t('acc.badEmailShort'), 'bad'); return; }
     const btn = $('btn-send-reset');
     btn.disabled = true;
-    this.hint('正在发送重置验证码…');
+    this.hint(t('acc.sendingReset'));
     try {
       this.resetChallenge = await this.cloud.requestPasswordReset(email);
-      this.hint('重置码已发送，请同时填写新密码（至少 6 位）', 'ok');
+      this.hint(t('acc.resetSent'), 'ok');
     } catch (e) {
       this.resetChallenge = null;
-      this.hint(e.message || '发送失败', 'bad');
+      this.hint(e.message || t('acc.sendFail'), 'bad');
       btn.disabled = false;
     }
   }
@@ -343,20 +340,20 @@ export class CloudUI {
   async doCompleteReset() {
     const nonce = ($('reset-code').value || '').trim();
     const password = $('reset-newpwd').value || '';
-    if (!this.resetChallenge) { this.hint('请先获取重置验证码', 'bad'); return; }
-    if (!nonce) { this.hint('请填写邮件里的重置码', 'bad'); return; }
-    if (password.length < 6) { this.hint('新密码至少 6 位', 'bad'); return; }
+    if (!this.resetChallenge) { this.hint(t('acc.needResetCode'), 'bad'); return; }
+    if (!nonce) { this.hint(t('acc.enterResetCode'), 'bad'); return; }
+    if (password.length < 6) { this.hint(t('acc.pwd6'), 'bad'); return; }
     const btn = $('btn-do-reset');
-    btn.disabled = true; btn.textContent = '提 交 中…';
+    btn.disabled = true; btn.textContent = t('acc.submitting');
     try {
       await this.cloud.completePasswordReset(this.resetChallenge, nonce, password);
       this.resetChallenge = null;
       $('reset-code').value = ''; $('reset-newpwd').value = '';
-      await this.afterSignIn('密码已重置，已为你登录');
+      await this.afterSignIn(t('acc.resetDone'));
     } catch (e) {
-      this.hint(e.message || '重置失败', 'bad');
+      this.hint(e.message || t('acc.resetFail'), 'bad');
     } finally {
-      btn.disabled = false; btn.textContent = '设 置 新 密 码';
+      btn.disabled = false; btn.textContent = t('acc.setPwd');
     }
   }
 
@@ -365,31 +362,31 @@ export class CloudUI {
     let n = 60;
     btn.disabled = true;
     clearInterval(this.sendTimer);
-    btn.textContent = `${n}s 后可重发`;
+    btn.textContent = t('acc.resendIn', n);
     this.sendTimer = setInterval(() => {
       n--;
       if (n <= 0) {
         clearInterval(this.sendTimer);
         btn.disabled = false;
-        btn.textContent = '继 续';
+        btn.textContent = t('acc.continue');
       } else {
-        btn.textContent = `${n}s 后可重发`;
+        btn.textContent = t('acc.resendIn', n);
       }
     }, 1000);
   }
 
   /* ------------------------------------------------- 登录成功后的编排 */
   async afterSignIn(okMsg) {
-    this.hint(okMsg + '，正在同步云档案…', 'ok');
+    this.hint(t('acc.afterSync', okMsg), 'ok');
     this.render();
     try {
       if (this.cb.onSignedIn) await this.cb.onSignedIn();
     } catch (e) {
-      this.hint('已登录，但同步失败：' + e.message, 'bad');
+      this.hint(t('acc.syncFailAfter', e.message), 'bad');
       return;
     }
     this.render();
-    this.hint(okMsg + '，云端数据已同步', 'ok');
+    this.hint(t('acc.synced', okMsg), 'ok');
   }
 
   async doSignOut() {
@@ -404,7 +401,7 @@ export class CloudUI {
       this.render();
       if (this.cb.onSignedOut) this.cb.onSignedOut();
     } catch (e) {
-      this._toast('退出失败：' + (e.message || e), false);
+      this._toast(t('acc.signoutFail', e.message || e), false);
     } finally {
       btn.disabled = false;
     }
@@ -412,15 +409,15 @@ export class CloudUI {
 
   async doSync() {
     const btn = $('btn-sync');
-    btn.disabled = true; btn.textContent = '同 步 中…';
+    btn.disabled = true; btn.textContent = t('acc.syncing');
     try {
       if (this.cb.onSignedIn) await this.cb.onSignedIn();
       this.render();
-      this._toast('已与云端同步', true);
+      this._toast(t('acc.syncedToast'), true);
     } catch (e) {
-      this._toast('同步失败：' + (e.message || e), false);
+      this._toast(t('acc.syncFail', e.message || e), false);
     } finally {
-      btn.disabled = false; btn.textContent = '同 步 成 就 与 档 案';
+      btn.disabled = false; btn.textContent = t('acc.sync');
     }
   }
 
@@ -431,7 +428,7 @@ export class CloudUI {
     for (const id of TRACK_ORDER) {
       const b = document.createElement('button');
       b.dataset.track = id;
-      b.textContent = TRACKS[id].name;
+      b.textContent = pick(TRACKS[id].name);
       b.className = id === this.boardTrack ? 'on' : '';
       b.addEventListener('click', () => {
         this.boardTrack = id;
@@ -445,14 +442,21 @@ export class CloudUI {
   async loadBoard() {
     const table = $('board-table');
     const hint = $('board-hint');
-    const head = '<tr><th>#</th><th>车手</th><th>单圈</th><th>极速</th><th>漂移分</th><th>模式</th></tr>';
-    table.innerHTML = head + '<tr><td colspan="6" style="text-align:center;opacity:.6">加载中…</td></tr>';
+    const head = `<tr><th>${t('result.colRank')}</th><th>${t('board.driver')}</th><th>${t(
+      'board.lap'
+    )}</th><th>${t('board.top')}</th><th>${t('board.drift')}</th><th>${t(
+      'board.mode'
+    )}</th></tr>`;
+    table.innerHTML =
+      head +
+      `<tr><td colspan="6" style="text-align:center;opacity:.6">${t('board.loading')}</td></tr>`;
     hint.textContent = '';
     try {
       const all = await this.cloud.fetchLeaderboard(this.boardTrack, 20);
       if (!all.length) {
-        table.innerHTML = head +
-          '<tr><td colspan="6" style="text-align:center;opacity:.6">这条赛道还没有成绩，来跑第一个</td></tr>';
+        table.innerHTML =
+          head +
+          `<tr><td colspan="6" style="text-align:center;opacity:.6">${t('board.empty')}</td></tr>`;
         return;
       }
       // 每位玩家只显示最快的一圈：查询已按圈速升序，取每人首次出现即可
@@ -464,27 +468,30 @@ export class CloudUI {
         seen.add(key);
         return true;
       });
-      const modeName = { solo: '单人', split: '分屏', online: '联机' };
+      const modeName = {
+        solo: t('board.modeSolo'),
+        split: t('board.modeSplit'),
+        online: t('board.modeOnline'),
+      };
       table.innerHTML = head +
         rows.map((r, i) => {
           const mine = this.cloud.signedIn && r.owner_id === this.cloud.user.id;
           const pos = i === 0 ? '<span class="p1">1</span>' : i + 1;
           return `<tr${mine ? ' class="me"' : ''}>
             <td class="pos">${pos}</td>
-            <td>${escapeHtml(r.player_name || '车手')}${mine ? ' <small>（你）</small>' : ''}</td>
+            <td>${escapeHtml(r.player_name || t('board.driver'))}${mine ? ` <small>${t('board.youTag')}</small>` : ''}</td>
             <td>${fmtTime(r.lap_ms)}</td>
             <td>${Math.round(r.top_kmh || 0)} km/h</td>
             <td>${(r.drift_score || 0).toLocaleString()}</td>
             <td>${modeName[r.mode] || r.mode}</td>
           </tr>`;
         }).join('');
-      hint.textContent = this.cloud.signedIn
-        ? '排行榜对所有人可见；每位玩家只显示最快的一圈，你的成绩会自动上榜'
-        : '未登录只能查看排行榜。登录后你跑出的成绩才会记录上榜';
+      hint.textContent = this.cloud.signedIn ? t('board.hintOn') : t('board.hintOff');
     } catch (e) {
-      table.innerHTML = head +
-        '<tr><td colspan="6" style="text-align:center;opacity:.6">排行榜加载失败</td></tr>';
-      hint.textContent = '加载失败：' + (e.message || e);
+      table.innerHTML =
+        head +
+        `<tr><td colspan="6" style="text-align:center;opacity:.6">${t('board.fail')}</td></tr>`;
+      hint.textContent = t('board.loadFail', e.message || e);
     }
   }
 }

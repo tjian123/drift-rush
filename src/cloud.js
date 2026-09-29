@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 /* ===========================================================================
  * cloud.js — WorkBuddy 云服务接入层
  *
@@ -50,20 +52,20 @@ function loadSdk() {
     s.async = true;
     const timer = setTimeout(() => {
       s.remove();
-      reject(new Error('云服务 SDK 加载超时'));
+      reject(new Error(t('clouderr.sdkTimeout')));
     }, SDK_TIMEOUT_MS);
     s.onload = () => {
       clearTimeout(timer);
       if (window.WorkBuddyCloud && typeof window.WorkBuddyCloud.createWorkBuddyCloud === 'function') {
         resolve(window.WorkBuddyCloud);
       } else {
-        reject(new Error('云服务 SDK 加载后未暴露 WorkBuddyCloud'));
+        reject(new Error(t('clouderr.sdkNoGlobal')));
       }
     };
     s.onerror = () => {
       clearTimeout(timer);
       s.remove();
-      reject(new Error('云服务 SDK 加载失败（网络不可达）'));
+      reject(new Error(t('clouderr.sdkLoadFail')));
     };
     document.head.appendChild(s);
   });
@@ -72,39 +74,42 @@ function loadSdk() {
 
 /* ------------------------------------------------------------ 错误归一化 */
 /**
- * 把 SDK 错误翻成给玩家看的中文提示，保留 kind 便于上层分支。
+ * 把 SDK 错误翻成给玩家看的提示，保留 kind 便于上层分支。
  * 优先按 kind 判定；kind 未覆盖时再用消息文本兜底（部分错误只带英文原文）。
+ * 存的是 i18n key 而非成品文案：切语言后新弹出的错误会立刻用新语言。
  */
 const MESSAGE_MAP = [
-  [/username or password incorrect|invalid login|wrong password/i, '账号或密码不正确'],
-  [/user already (registered|exists)|already exists/i, '该邮箱已注册，请直接用密码登录'],
-  [/invalid email|email.*(invalid|format)/i, '邮箱格式不正确'],
-  [/password.*(least|short|length)|weak password/i, '密码太短，请至少 8 位'],
-  [/too many requests|rate limit/i, '操作过于频繁，请稍后再试'],
-  [/expired/i, '验证码已过期，请重新获取'],
-  [/not found|could not find/i, '账号不存在或验证码已失效'],
+  [/username or password incorrect|invalid login|wrong password/i, 'clouderr.badCreds'],
+  [/user already (registered|exists)|already exists/i, 'clouderr.alreadyRegistered'],
+  [/invalid email|email.*(invalid|format)/i, 'clouderr.badEmail'],
+  [/password.*(least|short|length)|weak password/i, 'clouderr.pwdShort'],
+  [/too many requests|rate limit/i, 'clouderr.rateLimit'],
+  [/expired/i, 'clouderr.codeExpired'],
+  [/not found|could not find/i, 'clouderr.notFound'],
 ];
 
+const KIND_KEYS = {
+  unauthenticated: 'clouderr.needLogin',
+  invalid_grant: 'clouderr.badCreds',
+  network: 'clouderr.network',
+  'backend-unavailable': 'clouderr.backendDown',
+  otp_expired: 'clouderr.codeExpired',
+  otp_invalid: 'clouderr.codeWrong',
+};
+
 export function normalizeError(e) {
-  if (!e) return { kind: 'unknown', message: '未知错误' };
+  if (!e) return { kind: 'unknown', key: 'clouderr.unknown', message: t('clouderr.unknown') };
   const kind = e.kind || e.code || (e.error && (e.error.kind || e.error.code)) || 'unknown';
   const raw = e.message || (e.error && e.error.message) || String(e);
-  let message = raw;
-  switch (kind) {
-    case 'unauthenticated': message = '请先登录账号'; break;
-    case 'invalid_grant': message = '账号或密码不正确'; break;
-    case 'network': message = '网络异常，请稍后重试'; break;
-    case 'backend-unavailable': message = '云服务暂时不可用，请稍后重试'; break;
-    case 'otp_expired': message = '验证码已过期，请重新获取'; break;
-    case 'otp_invalid': message = '验证码不正确'; break;
-    default: {
-      for (const [re, zh] of MESSAGE_MAP) {
-        if (re.test(raw)) { message = zh; break; }
-      }
-      break;
+  let key = KIND_KEYS[kind];
+  if (!key) {
+    for (const [re, k] of MESSAGE_MAP) {
+      if (re.test(raw)) { key = k; break; }
     }
   }
-  return { kind, message };
+  /* 无法归类时退回 SDK 原文（多半已是英文），总比丢一句“未知错误”有用 */
+  const message = key ? t(key) : raw;
+  return { kind, key: key || null, message };
 }
 
 const isMissingTable = (e) => !!e && (e.code === '42P01' || /relation .* does not exist/i.test(e.message || ''));
@@ -183,7 +188,7 @@ class CloudService {
   /* ================================================================ 认证 */
   /** 发送邮箱验证码（注册或登录共用同一条链路） */
   async sendEmailCode(email) {
-    if (!this.available) throw new Error('云服务尚未就绪');
+    if (!this.available) throw new Error(t('clouderr.notReady'));
     const res = await this.auth.sendOtp({ email });
     if (res.error) throw Object.assign(new Error(normalizeError(res.error).message), normalizeError(res.error));
     return res.data;   // { verificationId, isExistingUser }
@@ -195,8 +200,8 @@ class CloudService {
    * 提交阶段绝不再发新码。
    */
   async verifyEmailCode({ email, token, pending, password }) {
-    if (!pending || !pending.verificationId) throw new Error('请先获取验证码');
-    if (pending.email !== email) throw new Error('请先为当前邮箱获取验证码');
+    if (!pending || !pending.verificationId) throw new Error(t('clouderr.needCode'));
+    if (pending.email !== email) throw new Error(t('clouderr.needCodeForEmail'));
     const res = await this.auth.verifyOtp({
       email: pending.email,
       verificationId: pending.verificationId,
@@ -215,7 +220,7 @@ class CloudService {
 
   /** 邮箱 + 密码登录 */
   async signInWithPassword(email, password) {
-    if (!this.available) throw new Error('云服务尚未就绪');
+    if (!this.available) throw new Error(t('clouderr.notReady'));
     const res = await this.auth.signInWithPassword({ email, password });
     if (res.error) {
       const n = normalizeError(res.error);
@@ -228,7 +233,7 @@ class CloudService {
 
   /** 忘记密码第 1 步：向邮箱发送重置验证码，返回带 updateUser 的挑战对象 */
   async requestPasswordReset(email) {
-    if (!this.available) throw new Error('云服务尚未就绪');
+    if (!this.available) throw new Error(t('clouderr.notReady'));
     const res = await this.auth.resetPasswordForEmail(email);
     if (res.error) {
       const n = normalizeError(res.error);
@@ -262,7 +267,7 @@ class CloudService {
 
   /* ============================================================== 数据库 */
   _requireReady() {
-    if (!this.available) throw new Error('云服务尚未就绪');
+    if (!this.available) throw new Error(t('clouderr.notReady'));
   }
 
   /**
@@ -271,7 +276,7 @@ class CloudService {
    * 返回写入后的行；若 RLS 过滤掉（非本人）会得到空数组 —— 视为失败。
    */
   async saveProfile(patch) {
-    if (!this.signedIn) throw new Error('请先登录账号');
+    if (!this.signedIn) throw new Error(t('clouderr.needLogin'));
     this._requireReady();
     const row = { ...patch, updated_at: new Date().toISOString() };
     const { data, error } = await this.db
@@ -280,7 +285,7 @@ class CloudService {
       .select();
     if (error) throw new Error(this._dbMessage(error));
     const saved = Array.isArray(data) ? data[0] : data;
-    if (!saved) throw new Error('档案未能写入（可能没有权限）');
+    if (!saved) throw new Error(t('clouderr.profileDenied'));
     this.profile = saved;
     this._emit();
     return saved;
@@ -308,9 +313,9 @@ class CloudService {
 
   /** 提交一条单圈成绩（登录后才有身份；未登录直接失败，不做任何伪装） */
   async submitLap({ trackId, lapMs, topKmh = 0, driftScore = 0, mode = 'solo', playerName }) {
-    if (!this.signedIn) throw new Error('请先登录账号，成绩才能上榜');
+    if (!this.signedIn) throw new Error(t('clouderr.needLoginScore'));
     this._requireReady();
-    if (!Number.isFinite(lapMs) || lapMs <= 0) throw new Error('圈速无效，未提交');
+    if (!Number.isFinite(lapMs) || lapMs <= 0) throw new Error(t('clouderr.invalidLap'));
     const { data, error } = await this.db
       .from('dr_lap_records')
       .insert({
@@ -319,11 +324,11 @@ class CloudService {
         top_kmh: Math.round(topKmh * 10) / 10,
         drift_score: Math.max(0, Math.round(driftScore)),
         mode: String(mode),
-        player_name: String(playerName || '车手').slice(0, 16),
+        player_name: String(playerName || t('lobby.driver')).slice(0, 16),
       })
       .select();
     if (error) throw new Error(this._dbMessage(error));
-    if (!Array.isArray(data) || !data.length) throw new Error('成绩未写入（权限被拒）');
+    if (!Array.isArray(data) || !data.length) throw new Error(t('clouderr.scoreDenied'));
     return data[0];
   }
 
@@ -360,9 +365,9 @@ class CloudService {
    * 返回合并后的成就 id 数组（本地 ∪ 云端）。
    */
   async syncAchievements(localIds, playerName) {
-    if (!this.signedIn || !this.user.id) throw new Error('请先登录账号');
+    if (!this.signedIn || !this.user.id) throw new Error(t('clouderr.needLogin'));
     this._requireReady();
-    const name = String(playerName || '车手').slice(0, 16);
+    const name = String(playerName || t('lobby.driver')).slice(0, 16);
 
     if (localIds.length) {
       const rows = localIds.map((ach_id) => ({ ach_id: String(ach_id), player_name: name }));
@@ -399,10 +404,10 @@ class CloudService {
   }
 
   _dbMessage(error) {
-    if (isMissingTable(error)) return '云端数据表不存在，请检查云服务环境';
-    if (isDenied(error)) return '没有权限执行该操作';
-    if (error && error.code === '23505') return '该记录已存在';
-    return (error && error.message) || '云数据库操作失败';
+    if (isMissingTable(error)) return t('clouderr.noTable');
+    if (isDenied(error)) return t('clouderr.noPerm');
+    if (error && error.code === '23505') return t('clouderr.duplicate');
+    return (error && error.message) || t('clouderr.dbFail');
   }
 }
 
@@ -418,13 +423,13 @@ export async function pullCloudState(ach) {
 
   try {
     out.profile = await cloud.loadProfile();
-  } catch (e) { out.errors.push('档案读取失败：' + e.message); }
+  } catch (e) { out.errors.push(t('clouderr.profileReadFail', e.message)); }
 
   try {
     const localIds = ach ? [...ach.unlocked] : [];
-    const { merged } = await cloud.syncAchievements(localIds, out.profile ? out.profile.display_name : '车手');
+    const { merged } = await cloud.syncAchievements(localIds, out.profile ? out.profile.display_name : t('lobby.driver'));
     out.mergedAchievements = merged;
-  } catch (e) { out.errors.push('成就同步失败：' + e.message); }
+  } catch (e) { out.errors.push(t('clouderr.achSyncFail', e.message)); }
 
   return out;
 }

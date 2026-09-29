@@ -14,7 +14,13 @@ import { ITEMS_CFG } from './config.js';
 import { clamp } from './util.js';
 
 export const ITEM_ICONS = { boost: '⚡', shield: '🛡', oil: '🛢', missile: '🚀' };
-export const ITEM_NAMES = { boost: '氮气', shield: '护盾', oil: '油污', missile: '导弹' };
+/* 双语道具名：{en,zh} 由 i18n 的 pick() 取值；渲染处统一 pick(ITEM_NAMES[x]) */
+export const ITEM_NAMES = {
+  boost: { en: 'Boost', zh: '氮气' },
+  shield: { en: 'Shield', zh: '护盾' },
+  oil: { en: 'Oil Slick', zh: '油污' },
+  missile: { en: 'Missile', zh: '导弹' },
+};
 export const ITEM_SEQ = ['boost', 'shield', 'oil', 'missile'];   // 抽取滚动动画的轮转序列
 
 /** 按名次加权抽道具：behind ∈ [0..1]，0=领跑，1=垫底 */

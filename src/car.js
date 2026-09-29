@@ -8,6 +8,7 @@
  *       世界前向 = (sin h, 0, cos h)
  * =========================================================================*/
 
+import { t } from './i18n.js';
 import { CFG } from './config.js';
 import { clamp, damp, smoothstep } from './util.js';
 
@@ -88,7 +89,7 @@ export function buildCarMesh(THREE, paint) {
 export function makeRacer(opts) {
   return {
     id: opts.id,
-    name: opts.name || '车手',
+    name: opts.name || t('lobby.driver'),
     paint: opts.paint ?? 0,
     kind: opts.kind || 'local',       // local | split2 | ai | remote
     slot: opts.slot ?? 0,

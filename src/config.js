@@ -35,7 +35,7 @@ export const CFG = {
 
   /* --- 比赛 --- */
   LAPS_DEFAULT: 3,
-  CAM_MODES: ["追尾", "车头", "电影", "航拍"],
+  CAM_MODES: { en: ["Chase", "Nose", "Cinematic", "Aerial"], zh: ["追尾", "车头", "电影", "航拍"] },
   MAX_PLAYERS: 8,
   NET_HZ: 20, // 快照发送频率
 };
@@ -48,8 +48,8 @@ export const CFG = {
 export const TRACKS = {
   coast: {
     id: "coast",
-    name: "黄昏海岸",
-    desc: "长弯与缓坡，适合练漂移",
+    name: { en: "Dusk Coast", zh: "黄昏海岸" },
+    desc: { en: "Long bends & gentle slopes — easy to drift", zh: "长弯与缓坡，适合练漂移" },
     laps: 3,
     polar: {
       base: 175,
@@ -124,8 +124,8 @@ export const TRACKS = {
 
   city: {
     id: "city",
-    name: "午夜都市",
-    desc: "窄弯密集，考验走线精度",
+    name: { en: "Midnight City", zh: "午夜都市" },
+    desc: { en: "Tight dense corners — tests your racing line", zh: "窄弯密集，考验走线精度" },
     laps: 3,
     polar: {
       base: 164,
@@ -169,8 +169,8 @@ export const TRACKS = {
 
   desert: {
     id: "desert",
-    name: "沙漠峡谷",
-    desc: "高速直道接大幅爬坡",
+    name: { en: "Desert Canyon", zh: "沙漠峡谷" },
+    desc: { en: "High-speed straights into big climbs", zh: "高速直道接大幅爬坡" },
     laps: 3,
     polar: {
       base: 205,
@@ -213,8 +213,8 @@ export const TRACKS = {
 
   snow: {
     id: "snow",
-    name: "雪原冰川",
-    desc: "低抓地长漂，视线开阔",
+    name: { en: "Snow Glacier", zh: "雪原冰川" },
+    desc: { en: "Low-grip long drifts, wide open views", zh: "低抓地长漂，视线开阔" },
     laps: 3,
     polar: {
       base: 178,
@@ -261,8 +261,8 @@ export const TRACKS = {
      配合浓雾与低角度晨光强化「清晨进山」的临场感。 */
   mountain: {
     id: "mountain",
-    name: "晨雾山道",
-    desc: "发卡与 S 弯连环，节奏多变",
+    name: { en: "Misty Mountain", zh: "晨雾山道" },
+    desc: { en: "Hairpins & S-bends chained together — shifting rhythm", zh: "发卡与 S 弯连环，节奏多变" },
     laps: 3,
     polar: {
       base: 186,
@@ -311,14 +311,14 @@ export const TRACK_ORDER = ["coast", "city", "desert", "snow", "mountain"];
  * 车辆涂装（联机时用涂装索引区分玩家）
  * -------------------------------------------------------------------------*/
 export const PAINTS = [
-  { id: 0, name: "赤焰红", body: 0xd8323c, rim: 0xc9d2dc },
-  { id: 1, name: "深海蓝", body: 0x2b6cd8, rim: 0xd8e2ec },
-  { id: 2, name: "柠檬黄", body: 0xe8c23a, rim: 0x2c3038 },
-  { id: 3, name: "薄荷绿", body: 0x2fc07a, rim: 0xe4ecf4 },
-  { id: 4, name: "幻紫", body: 0x8f4ce0, rim: 0xf0e6ff },
-  { id: 5, name: "碳黑", body: 0x24262e, rim: 0xe0a13a },
-  { id: 6, name: "橙风", body: 0xf07a24, rim: 0x2c3038 },
-  { id: 7, name: "雪白", body: 0xe8eef6, rim: 0x3a4a5e },
+  { id: 0, name: { en: "Crimson Red", zh: "赤焰红" }, body: 0xd8323c, rim: 0xc9d2dc },
+  { id: 1, name: { en: "Deep Blue", zh: "深海蓝" }, body: 0x2b6cd8, rim: 0xd8e2ec },
+  { id: 2, name: { en: "Lemon Yellow", zh: "柠檬黄" }, body: 0xe8c23a, rim: 0x2c3038 },
+  { id: 3, name: { en: "Mint Green", zh: "薄荷绿" }, body: 0x2fc07a, rim: 0xe4ecf4 },
+  { id: 4, name: { en: "Violet", zh: "幻紫" }, body: 0x8f4ce0, rim: 0xf0e6ff },
+  { id: 5, name: { en: "Carbon Black", zh: "碳黑" }, body: 0x24262e, rim: 0xe0a13a },
+  { id: 6, name: { en: "Orange Wind", zh: "橙风" }, body: 0xf07a24, rim: 0x2c3038 },
+  { id: 7, name: { en: "Snow White", zh: "雪白" }, body: 0xe8eef6, rim: 0x3a4a5e },
 ];
 
 /* ---------------------------------------------------------------------------
@@ -329,117 +329,117 @@ export const PAINTS = [
 export const ACHIEVEMENTS = [
   {
     id: "first_lap",
-    title: "初次上路",
-    desc: "完成你的第一圈",
+    title: { en: "First Drive", zh: "初次上路" },
+    desc: { en: "Complete your first lap", zh: "完成你的第一圈" },
     tier: "starter",
   },
   {
     id: "first_race",
-    title: "首战告捷",
-    desc: "完成一场完整比赛",
+    title: { en: "First Win", zh: "首战告捷" },
+    desc: { en: "Finish a full race", zh: "完成一场完整比赛" },
     tier: "starter",
   },
   {
     id: "speed_150",
-    title: "风起了",
-    desc: "时速突破 150 km/h",
+    title: { en: "Wind Rises", zh: "风起了" },
+    desc: { en: "Break 150 km/h", zh: "时速突破 150 km/h" },
     tier: "starter",
   },
-  { id: "speed_210", title: "破风者", desc: "时速突破 210 km/h", tier: "pro" },
+  { id: "speed_210", title: { en: "Windbreaker", zh: "破风者" }, desc: { en: "Break 210 km/h", zh: "时速突破 210 km/h" }, tier: "pro" },
   {
     id: "drift_500",
-    title: "漂移入门",
-    desc: "单场漂移积分累计 500",
+    title: { en: "Drift Novice", zh: "漂移入门" },
+    desc: { en: "Bank 500 drift points in one race", zh: "单场漂移积分累计 500" },
     tier: "starter",
   },
   {
     id: "drift_3000",
-    title: "甩尾大师",
-    desc: "单场漂移积分累计 3000",
+    title: { en: "Drift Master", zh: "甩尾大师" },
+    desc: { en: "Bank 3000 drift points in one race", zh: "单场漂移积分累计 3000" },
     tier: "pro",
   },
   {
     id: "combo_5",
-    title: "连击艺术家",
-    desc: "漂移连击倍数达到 5.0",
+    title: { en: "Combo Artist", zh: "连击艺术家" },
+    desc: { en: "Reach a 5.0x drift combo multiplier", zh: "漂移连击倍数达到 5.0" },
     tier: "pro",
   },
   {
     id: "clean_lap",
-    title: "干净的一圈",
-    desc: "单圈全程不出赛道完赛",
+    title: { en: "Clean Lap", zh: "干净的一圈" },
+    desc: { en: "Finish a lap without leaving the track", zh: "单圈全程不出赛道完赛" },
     tier: "pro",
   },
   {
     id: "no_brake",
-    title: "刹车是懦夫",
-    desc: "单圈全程不踩刹车完赛",
+    title: { en: "Brakes Are For Cowards", zh: "刹车是懦夫" },
+    desc: { en: "Finish a lap without braking", zh: "单圈全程不踩刹车完赛" },
     tier: "master",
   },
   {
     id: "wall_ride",
-    title: "贴墙走线",
-    desc: "紧贴护墙连续行驶 2 秒",
+    title: { en: "Wall Rider", zh: "贴墙走线" },
+    desc: { en: "Hug the wall continuously for 2 seconds", zh: "紧贴护墙连续行驶 2 秒" },
     tier: "pro",
   },
   {
     id: "win_ai",
-    title: "人机之王",
-    desc: "在带 AI 对手的比赛中夺冠",
+    title: { en: "AI Conqueror", zh: "人机之王" },
+    desc: { en: "Win a race that includes AI opponents", zh: "在带 AI 对手的比赛中夺冠" },
     tier: "pro",
   },
   {
     id: "comeback",
-    title: "绝地反击",
-    desc: "从最后一名反超至第一名",
+    title: { en: "Comeback", zh: "绝地反击" },
+    desc: { en: "Climb from last place to first", zh: "从最后一名反超至第一名" },
     tier: "master",
   },
   {
     id: "online_first",
-    title: "联机首战",
-    desc: "完成一场在线联机比赛",
+    title: { en: "Online Debut", zh: "联机首战" },
+    desc: { en: "Finish an online multiplayer race", zh: "完成一场在线联机比赛" },
     tier: "starter",
   },
   {
     id: "online_party",
-    title: "人齐了",
-    desc: "在 4 人以上的房间完赛",
+    title: { en: "Full House", zh: "人齐了" },
+    desc: { en: "Finish a race in a room of 4+ players", zh: "在 4 人以上的房间完赛" },
     tier: "pro",
   },
   {
     id: "splitscreen",
-    title: "沙发对决",
-    desc: "完成一场本地分屏对战",
+    title: { en: "Couch Duel", zh: "沙发对决" },
+    desc: { en: "Finish a local split-screen match", zh: "完成一场本地分屏对战" },
     tier: "starter",
   },
   {
     id: "tour_all",
-    title: "全图制霸",
-    desc: "在全部赛道上各完成一圈",
+    title: { en: "Track Conqueror", zh: "全图制霸" },
+    desc: { en: "Complete a lap on every track", zh: "在全部赛道上各完成一圈" },
     tier: "master",
   },
   {
     id: "ai_beater",
-    title: "黄金右脚",
-    desc: "AI 难度设为「困难」并夺冠",
+    title: { en: "Golden Foot", zh: "黄金右脚" },
+    desc: { en: "Win on Hard AI difficulty", zh: "AI 难度设为「困难」并夺冠" },
     tier: "master",
   },
   {
     id: "night_owl",
-    title: "夜猫子",
-    desc: "在午夜都市跑进单圈 60 秒",
+    title: { en: "Night Owl", zh: "夜猫子" },
+    desc: { en: "Lap Midnight City in under 60s", zh: "在午夜都市跑进单圈 60 秒" },
     tier: "pro",
   },
   {
     id: "photo_finish",
-    title: "毫厘之争",
-    desc: "以 0.3 秒内的差距赢得比赛",
+    title: { en: "Photo Finish", zh: "毫厘之争" },
+    desc: { en: "Win by a margin under 0.3s", zh: "以 0.3 秒内的差距赢得比赛" },
     tier: "master",
   },
   {
     id: "perfectionist",
-    title: "完美起步",
-    desc: "发车信号后 0.35 秒内起步",
+    title: { en: "Perfect Launch", zh: "完美起步" },
+    desc: { en: "Launch within 0.35s of the start signal", zh: "发车信号后 0.35 秒内起步" },
     tier: "starter",
   },
 ];
@@ -448,7 +448,7 @@ export const ACHIEVEMENTS = [
 export const AI_LEVELS = {
   easy: {
     id: "easy",
-    name: "轻松",
+    name: { en: "Easy", zh: "轻松" },
     latAccel: 26, // 弯道可用侧向加速度（决定过弯速度上限）
     speedMul: 0.9, // 极速倍率
     rubber: 0.22, // 橡皮筋强度（追赶玩家）
@@ -457,7 +457,7 @@ export const AI_LEVELS = {
   },
   normal: {
     id: "normal",
-    name: "普通",
+    name: { en: "Normal", zh: "普通" },
     latAccel: 34,
     speedMul: 0.97,
     rubber: 0.12,
@@ -466,7 +466,7 @@ export const AI_LEVELS = {
   },
   hard: {
     id: "hard",
-    name: "困难",
+    name: { en: "Hard", zh: "困难" },
     latAccel: 43,
     speedMul: 1.0,
     rubber: 0.0,

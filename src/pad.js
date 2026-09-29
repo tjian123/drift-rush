@@ -21,20 +21,26 @@
  *   Back buttons[8] → 复位到赛道（边沿触发）
  * =========================================================================*/
 
+import { t } from "./i18n.js";
+
 const STEER_DZ = 0.14; // 摇杆转向死区
 const GAS_DZ = 0.18; // 扳机油门死区（部分手柄扳机有零点漂移）
 
-/** 把冗长的 Gamepad.id 缩成友好名 */
+/**
+ * 把冗长的 Gamepad.id 缩成友好名。
+ * 返回的是 i18n key（而非成品文案）：pad.name getter 处再 t() 取值，
+ * 这样切语言后重新读取就是新语言；上层渲染统一 pick(pad.name) 也安全。
+ */
 function shortName(id) {
   const s = String(id || "").toLowerCase();
-  if (s.includes("gamesir")) return "盖世小鸡手柄";
-  if (s.includes("xbox")) return "Xbox 手柄";
-  if (s.includes("dualsense")) return "DualSense 手柄";
+  if (s.includes("gamesir")) return "pad.gamesir";
+  if (s.includes("xbox")) return "pad.xbox";
+  if (s.includes("dualsense")) return "pad.dualsense";
   if (s.includes("dualshock") || s.includes("ps4") || s.includes("ps5"))
-    return "PlayStation 手柄";
+    return "pad.playstation";
   if (s.includes("pro controller") || s.includes("switch"))
-    return "Switch Pro 手柄";
-  return "游戏手柄";
+    return "pad.switchpro";
+  return "pad.generic";
 }
 
 /** 死区 + 响应曲线：小角度更细腻，大角度打满（smoothstep） */
@@ -160,7 +166,7 @@ export function createPadController(cb) {
       return state.id;
     },
     get name() {
-      return shortName(state.id);
+      return t(shortName(state.id));
     },
   };
 }

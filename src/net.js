@@ -11,6 +11,7 @@
  * =========================================================================*/
 
 import { clamp, damp, wrapAngle } from './util.js';
+import { t } from './i18n.js';
 
 const STATE_HZ = 20;
 const POLL_MS = 80;
@@ -270,7 +271,7 @@ export class NetClient {
       let r = this.remotes.get(c.id);
       if (!r) {
         r = {
-          id: c.id, name: '车手', paint: 0,
+          id: c.id, name: t('lobby.driver'), paint: 0,
           x: c.p[0], y: c.p[1], z: c.p[2], heading: c.h, v: c.v,
           tx: c.p[0], ty: c.p[1], tz: c.p[2], th: c.h, tv: c.v,
           lap: c.lap, idx: c.idx, drift: c.drift, off: c.off, fin: c.fin, rank: c.rank,

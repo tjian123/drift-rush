@@ -15,10 +15,15 @@
     "verify:sky": "node tools/verify-sky.mjs",
     "verify:quality": "node tools/verify-quality.mjs",
     "verify:item": "node tools/verify-item.mjs",
-    "verify:tv": "node tools/verify-tv.mjs"
+    "verify:tv": "node tools/verify-tv.mjs",
+    "verify:i18n": "node tools/verify-i18n.mjs",
+    "verify:sysbtn": "node tools/verify-sysbtn.mjs",
+    "build:offline": "node tools/build-offline.mjs"
   },
   "notes": {
     "verify:signup": "真实账号闭环。DR_PHASE=signup（默认）走邮箱验证码注册；DR_PHASE=login 用已注册账号密码登录，免验证码复跑成绩上传/上榜环节（零依赖，环境变量请直接在 shell 里设置）"
   },
-  "dependencies": {}
+  "devDependencies": {
+    "esbuild": "^0.23.1"
+  }
 }

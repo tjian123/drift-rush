@@ -64,9 +64,21 @@ export function pickWeighted(rng, arr, weights) {
   return arr[arr.length - 1];
 }
 
-/** 名字池：AI 车手与默认玩家名 */
-export const DRIVER_NAMES = [
-  '夜路狂飙', '弯道诗人', '涡轮怪客', '刹车片杀手', '黄昏骑士', '沉默方向盘',
-  '两只老虎', '漂移实习生', '后视镜恐惧', '第三个弯道', '油门到底', '雨夜行车',
-  '海风与机油', '沙漠驼铃', '雪线以上', '城市猎人',
-];
+/**
+ * 名字池：AI 车手与默认玩家名。
+ * 双语 {en,zh}，取用时用 pick(DRIVER_NAMES) 拿到当前语言的数组。
+ * 注意：玩家名一旦生成就写进 prefs 持久化，切语言不会反过来改写已存的名字。
+ */
+export const DRIVER_NAMES = {
+  en: [
+    'Night Rider', 'Corner Poet', 'Turbo Freak', 'Brake Pad Killer',
+    'Dusk Knight', 'Silent Wheel', 'Twin Tigers', 'Drift Intern',
+    'Mirror Phobia', 'Third Corner', 'Pedal to the Metal', 'Rainy Night Run',
+    'Sea Breeze & Oil', 'Desert Bell', 'Above the Snowline', 'City Hunter',
+  ],
+  zh: [
+    '夜路狂飙', '弯道诗人', '涡轮怪客', '刹车片杀手', '黄昏骑士', '沉默方向盘',
+    '两只老虎', '漂移实习生', '后视镜恐惧', '第三个弯道', '油门到底', '雨夜行车',
+    '海风与机油', '沙漠驼铃', '雪线以上', '城市猎人',
+  ],
+};
